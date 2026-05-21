@@ -5,6 +5,54 @@ import Resume from "../models/Resume.js";
 import { conductLiveInterviewTurn, evaluateAnswer, generateInterviewPlan, generateQuestions, generateRoadmap } from "../services/ai.service.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 
+const liveQuestionSequence = {
+  "Frontend Developer": [
+    "Pick one UI project from your resume. What user problem did it solve, and what was your personal contribution?",
+    "If that page became slow on mobile, how would you diagnose and improve it?",
+    "How would you structure reusable components and state for that product as it grows?",
+    "Tell me about an accessibility or UX tradeoff you would consider before shipping.",
+    "Imagine an API response changes unexpectedly. How would you make the frontend resilient?"
+  ],
+  "Backend Developer": [
+    "Pick one backend project from your resume. What problem did the API or service solve, and what was your personal contribution?",
+    "How would you design the database schema and indexes if traffic increased?",
+    "A production endpoint is timing out. How would you debug it step by step?",
+    "What security and validation checks would you add before launch?",
+    "Tell me about a backend tradeoff between speed, reliability, and maintainability."
+  ],
+  "Full Stack Developer": [
+    "Pick one full-stack project from your resume. What did you build on the frontend, what did you build on the backend, and how did they connect?",
+    "If real users started using it tomorrow, what architecture or data-flow change would you make first?",
+    "A user reports that data is saved but not shown correctly in the UI. How would you debug across the stack?",
+    "How do you keep frontend and backend contracts stable when requirements change?",
+    "Tell me one tradeoff you made between user experience, performance, and implementation time."
+  ],
+  "AI Engineer": [
+    "Pick one AI or automation project from your resume. What model or workflow did you use, and what was your contribution?",
+    "How would you evaluate whether the AI output is actually good enough for users?",
+    "If the model gives a wrong or hallucinated answer, how would you reduce that risk?",
+    "How would you design logging, retries, and fallback behavior for this AI feature?",
+    "Tell me a tradeoff between accuracy, latency, cost, and user trust."
+  ],
+  "Data Analyst": [
+    "Pick one data project from your resume. What business question did it answer, and what was your contribution?",
+    "How would you clean and validate the dataset before trusting the result?",
+    "A metric suddenly drops by 30 percent. How would you investigate it?",
+    "How would you present uncertain or incomplete findings to a stakeholder?",
+    "Tell me one tradeoff between speed of analysis and confidence in the result."
+  ]
+};
+
+function normalizeQuestion(text = "") {
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function replacementLiveQuestion(role, turnNumber, transcript) {
+  const sequence = liveQuestionSequence[role] || liveQuestionSequence["Full Stack Developer"];
+  const asked = new Set((transcript || []).filter((item) => item.speaker === "interviewer").map((item) => normalizeQuestion(item.text)));
+  return sequence.find((question) => !asked.has(normalizeQuestion(question))) || sequence[Math.min(turnNumber, sequence.length - 1)];
+}
+
 export const createInterview = asyncHandler(async (req, res) => {
   const { role, difficulty = "mid", resumeId } = req.body;
   const resume = resumeId ? await Resume.findOne({ _id: resumeId, user: req.user._id }) : null;
@@ -118,6 +166,15 @@ export const submitLiveAnswer = asyncHandler(async (req, res) => {
     turnNumber,
     maxTurns
   });
+
+  const repeatedQuestion = (interview.transcript || []).some(
+    (item) => item.speaker === "interviewer" && normalizeQuestion(item.text) === normalizeQuestion(liveTurn.nextQuestion)
+  );
+  if (!liveTurn.nextQuestion || repeatedQuestion) {
+    liveTurn.nextQuestion = replacementLiveQuestion(interview.role, turnNumber, interview.transcript);
+    liveTurn.nextQuestionCategory = turnNumber === 1 ? "resume_deep_dive" : turnNumber === 2 ? "system_design" : "technical";
+    liveTurn.nextQuestionReason = "Selected to avoid repeating the previous interviewer question.";
+  }
 
   const feedback = await Feedback.create({
     interview: interview._id,

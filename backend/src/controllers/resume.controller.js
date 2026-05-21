@@ -27,8 +27,14 @@ export const uploadResume = asyncHandler(async (req, res) => {
 });
 
 export const listResumes = asyncHandler(async (req, res) => {
-  const resumes = await Resume.find({ user: req.user._id }).sort({ createdAt: -1 }).select("-extractedText");
-  res.json({ resumes });
+  const resumes = await Resume.find({ user: req.user._id }).sort({ createdAt: -1 });
+  res.json({
+    resumes: resumes.map((resume) => ({
+      ...resume.toObject(),
+      extractedText: undefined,
+      textPreview: resume.extractedText?.replace(/\s+/g, " ").trim().slice(0, 700) || ""
+    }))
+  });
 });
 
 export const getResume = asyncHandler(async (req, res) => {

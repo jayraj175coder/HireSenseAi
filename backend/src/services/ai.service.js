@@ -42,7 +42,115 @@ async function aiJson(prompt, fallback) {
   }
 }
 
+function scoreFromAnswer(answer) {
+  const lengthScore = Math.min(30, Math.floor(answer.length / 12));
+  const evidenceBonus = /\b(project|built|implemented|designed|deployed|users|team|database|api|react|node|mongodb|result)\b/i.test(answer) ? 12 : 0;
+  const tradeoffBonus = /\b(tradeoff|because|challenge|issue|problem|improve|optimize|debug|tested)\b/i.test(answer) ? 10 : 0;
+  return Math.min(88, Math.max(45, 45 + lengthScore + evidenceBonus + tradeoffBonus));
+}
+
+function liveFallbackTurn({ role, answer, turnNumber, maxTurns }) {
+  const score = scoreFromAnswer(answer);
+  const weak = score < 62;
+  const replies = [
+    weak ? "Thanks. I have the context, but I need a more specific example to understand your real contribution." : "Good start. I can see the direction, so I will go one level deeper.",
+    weak ? "That is still a bit broad. Let us make it practical and test how you think through implementation." : "Nice, that gives me some project context. Now I want to check your technical decision-making.",
+    weak ? "Okay. I want to see how you handle problems when something breaks in a real system." : "Good. Let us move from design to debugging and production thinking.",
+    weak ? "I understand. Now I am going to test how you communicate tradeoffs with a team." : "That is useful. Let us talk about tradeoffs and collaboration.",
+    weak ? "Thanks. For the last area, I want to understand how you learn and improve after feedback." : "Good, final stretch. I want to understand your growth mindset and readiness.",
+    "Thanks, that completes the interview. I am preparing your report now."
+  ];
+  const questions = [
+    `Pick one ${role} project from your resume. What problem were you solving, what exactly did you build, and what was your personal contribution?`,
+    "Imagine you have to rebuild that project for real users. What architecture would you choose, and why?",
+    "Suppose users report that the app is slow or failing. How would you debug it step by step?",
+    "Tell me about one technical tradeoff you made. What options did you compare, and what did you give up?",
+    "If I joined your project team tomorrow, what part of your code or design would you improve first, and why?",
+    "What is one skill gap you are actively working on for this role, and how are you practicing it?"
+  ];
+  const categories = ["resume_deep_dive", "system_design", "technical", "behavioral", "role_scenario", "behavioral"];
+  const index = Math.min(turnNumber, maxTurns - 1);
+
+  return {
+    score,
+    rubricScores: [
+      { criterion: "Role depth", score: Math.max(45, score - 4), note: weak ? "Needs more role-specific detail." : "Shows relevant role understanding." },
+      { criterion: "Evidence", score: Math.max(42, score - 10), note: weak ? "Needs concrete project evidence." : "Includes some usable project evidence." },
+      { criterion: "Communication", score: Math.min(90, score + 3), note: "Answer is understandable; structure can still improve." }
+    ],
+    strengths: weak ? ["Attempted to answer directly"] : ["Relevant project direction", "Clear enough to continue probing"],
+    weaknesses: weak ? ["Too general", "Missing concrete implementation details"] : ["Could quantify impact more clearly", "Could name tradeoffs more sharply"],
+    suggestions: ["Use a simple structure: context, action, tradeoff, result.", "Add exact technologies, constraints, and measurable outcome."],
+    evidence: [answer.slice(0, 140) || "No detailed evidence provided."],
+    communicationSignals: {
+      clarity: Math.min(90, score + 4),
+      structure: Math.max(45, score - 5),
+      specificity: Math.max(40, score - 12),
+      concision: answer.length > 900 ? 55 : 76
+    },
+    interviewerReply: replies[Math.min(turnNumber - 1, replies.length - 1)],
+    nextQuestion: questions[index],
+    nextQuestionCategory: categories[index],
+    nextQuestionReason: "Fallback interviewer selected the next competency area in a natural live-interview sequence.",
+    hireSignal: score >= 78 ? "lean_yes" : score >= 62 ? "mixed" : "lean_no",
+    confidence: 70
+  };
+}
+
+function extractEmail(text) {
+  return text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0];
+}
+
+function extractPhone(text) {
+  return text.match(/(?:\+?\d[\s-]?){8,14}\d/)?.[0];
+}
+
+function uniqueMatches(text, keywords) {
+  const lower = text.toLowerCase();
+  return keywords.filter((keyword) => lower.includes(keyword.toLowerCase()));
+}
+
+function buildResumeFallback(resumeText) {
+  const text = resumeText.replace(/\s+/g, " ").trim();
+  const nameLine = resumeText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line && !line.includes("@") && !/\d{6,}/.test(line));
+  const skills = uniqueMatches(text, [
+    "React", "JavaScript", "TypeScript", "Node.js", "Express", "MongoDB", "Python", "Java", "SQL", "HTML", "CSS",
+    "Tailwind", "Redux", "REST API", "Git", "Docker", "AWS", "Machine Learning", "Data Analysis", "Excel", "Power BI"
+  ]);
+  const tools = uniqueMatches(text, ["Git", "GitHub", "VS Code", "Postman", "Figma", "Docker", "Vercel", "Render", "MongoDB Atlas"]);
+  const hasProjects = /\b(project|projects|built|developed|implemented|created)\b/i.test(text);
+  const hasMetrics = /\b\d+%|\b\d+\s*(users|clients|seconds|ms|projects|members)\b/i.test(text);
+  const suggestedRoles = [];
+  if (skills.some((skill) => ["React", "HTML", "CSS", "Tailwind", "Redux"].includes(skill))) suggestedRoles.push("Frontend Developer");
+  if (skills.some((skill) => ["Node.js", "Express", "MongoDB", "REST API", "SQL"].includes(skill))) suggestedRoles.push("Backend Developer");
+  if (suggestedRoles.includes("Frontend Developer") && suggestedRoles.includes("Backend Developer")) suggestedRoles.unshift("Full Stack Developer");
+  if (skills.some((skill) => ["Machine Learning", "Python"].includes(skill))) suggestedRoles.push("AI Engineer");
+  if (skills.some((skill) => ["Data Analysis", "Excel", "Power BI", "SQL"].includes(skill))) suggestedRoles.push("Data Analyst");
+
+  return {
+    summary: `${nameLine || "Candidate"} resume parsed locally. Found ${skills.length || "some"} skill signals${extractEmail(text) ? " and contact details" : ""}. Add Gemini/OpenAI key for deeper semantic analysis.`,
+    candidateHeadline: `${suggestedRoles[0] || "Software"} candidate${skills.length ? ` with ${skills.slice(0, 4).join(", ")} signals` : " with project experience"}`,
+    roleFitScore: Math.min(92, 48 + skills.length * 5 + (hasProjects ? 12 : 0) + (hasMetrics ? 8 : 0)),
+    topSkills: skills.slice(0, 8),
+    missingSkills: ["Impact metrics", "Testing details", "System design explanation"].filter((item) => !(item === "Impact metrics" && hasMetrics)),
+    senioritySignal: hasMetrics && skills.length > 6 ? "mid" : "entry-to-mid",
+    improvementTips: ["Add measurable project impact.", "Mention testing, deployment, and debugging experience.", "Explain personal contribution for each project."],
+    technicalSkills: skills,
+    domainSignals: hasProjects ? ["Project-based experience", "Application development"] : ["Resume content detected"],
+    tools,
+    projectHighlights: hasProjects ? text.split(/(?=project|built|developed|implemented|created)/i).slice(0, 3).map((item) => item.trim().slice(0, 180)).filter(Boolean) : [],
+    riskFlags: hasMetrics ? ["Validate depth behind listed skills"] : ["Missing measurable impact", "Validate depth behind listed skills"],
+    suggestedRoles: [...new Set(suggestedRoles)].slice(0, 5),
+    interviewFocusAreas: ["Project ownership", "Technical depth", "Debugging", "Tradeoffs", "Deployment readiness"],
+    personalizationContext: `Candidate name signal: ${nameLine || "unknown"}. Email found: ${extractEmail(text) ? "yes" : "no"}. Phone found: ${extractPhone(text) ? "yes" : "no"}. Probe projects and exact contribution.`
+  };
+}
+
 export function analyzeResume(resumeText) {
+  const fallback = buildResumeFallback(resumeText);
   return aiJson(
     `You are a senior technical recruiter and interview designer. Analyze this resume for an AI mock interview system.
 
@@ -54,23 +162,7 @@ summary, candidateHeadline, roleFitScore 0-100, topSkills array, missingSkills a
 improvementTips array, technicalSkills array, domainSignals array, tools array, projectHighlights array,
 riskFlags array, suggestedRoles array, interviewFocusAreas array, personalizationContext string.
 Be specific to the resume. Do not invent employers or credentials.`,
-    {
-      summary: "Resume parsed successfully. Add an AI key for deeper personalized analysis.",
-      candidateHeadline: "Software candidate with full-stack project signals",
-      roleFitScore: 72,
-      topSkills: ["React", "Node.js", "Communication"],
-      missingSkills: ["System design", "Testing depth"],
-      senioritySignal: "mid",
-      improvementTips: ["Quantify impact with metrics.", "Add project outcomes and ownership scope."],
-      technicalSkills: ["React", "Node.js", "MongoDB"],
-      domainSignals: ["Web applications", "User-facing product work"],
-      tools: ["Git", "REST APIs"],
-      projectHighlights: ["Full-stack application experience"],
-      riskFlags: ["Impact metrics are not explicit"],
-      suggestedRoles: ["Full Stack Developer", "Frontend Developer"],
-      interviewFocusAreas: ["System design", "API design", "Debugging", "Project ownership"],
-      personalizationContext: "Ask for concrete project tradeoffs, shipped impact, and testing decisions."
-    }
+    fallback
   );
 }
 
@@ -199,6 +291,7 @@ The followUpQuestion should adapt to a gap or strong signal in this exact answer
 }
 
 export function conductLiveInterviewTurn({ role, difficulty, resumeAnalysis, interviewPlan, transcript, currentQuestion, answer, turnNumber, maxTurns }) {
+  const fallback = liveFallbackTurn({ role, answer, turnNumber, maxTurns });
   return aiJson(
     `You are a calm, professional live AI interviewer for a ${difficulty} ${role} mock interview, similar to a real placement-prep interview.
 
@@ -243,26 +336,9 @@ Behavior rules:
 - Adapt nextQuestion to the candidate answer, resume risks, and interview progress.
 - Early turns can ask follow-ups. Later turns should cover missing competencies.
 - If the answer is weak, ask a supportive probing question. If strong, increase difficulty.
-- Avoid generic quiz questions. Ask scenario, project, debugging, design, or decision-making questions.`,
-    {
-      score: Math.min(88, Math.max(50, answer.length / 9)),
-      rubricScores: [
-        { criterion: "Role depth", score: 68, note: "Shows some relevant understanding." },
-        { criterion: "Evidence", score: 60, note: "Needs more concrete project detail." },
-        { criterion: "Communication", score: 72, note: "Mostly clear and understandable." }
-      ],
-      strengths: ["Shows relevant direction", "Communicates the main idea clearly"],
-      weaknesses: ["Needs more concrete evidence", "Could explain tradeoffs more deeply"],
-      suggestions: ["Answer with situation, action, tradeoff, and result.", "Use metrics or constraints where possible."],
-      evidence: ["Candidate addressed the question but stayed broad."],
-      communicationSignals: { clarity: 72, structure: 66, specificity: 58, concision: 70 },
-      interviewerReply: "Good, I understand your direction. I want to test the depth behind that with a practical follow-up.",
-      nextQuestion: "Can you walk me through one real project where you made this kind of decision, including the tradeoffs and final result?",
-      nextQuestionCategory: "resume_deep_dive",
-      nextQuestionReason: "The previous answer needs stronger evidence and project-level detail.",
-      hireSignal: answer.length > 220 ? "lean_yes" : "mixed",
-      confidence: answer.length > 180 ? 78 : 60
-    }
+- Avoid generic quiz questions. Ask scenario, project, debugging, design, or decision-making questions.
+- Never repeat a previous question from the transcript.`,
+    fallback
   );
 }
 
