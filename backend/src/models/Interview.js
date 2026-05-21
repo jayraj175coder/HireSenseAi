@@ -11,9 +11,39 @@ const interviewSchema = new mongoose.Schema(
     },
     status: { type: String, enum: ["draft", "in_progress", "completed"], default: "draft" },
     difficulty: { type: String, enum: ["junior", "mid", "senior"], default: "mid" },
+    interviewPlan: {
+      openingMessage: String,
+      strategy: String,
+      competencies: [
+        {
+          name: String,
+          weight: Number,
+          whyItMatters: String
+        }
+      ],
+      resumeBasedProbes: [String],
+      riskAreasToValidate: [String]
+    },
+    transcript: [
+      {
+        speaker: { type: String, enum: ["interviewer", "candidate", "system"], default: "system" },
+        text: String,
+        question: { type: mongoose.Schema.Types.ObjectId, ref: "Question" },
+        createdAt: { type: Date, default: Date.now }
+      }
+    ],
     currentQuestionIndex: { type: Number, default: 0 },
     aggregateScore: { type: Number, default: 0 },
+    competencyScores: [
+      {
+        name: String,
+        score: Number
+      }
+    ],
+    readinessSummary: String,
     roadmap: [String],
+    practicePlan: [String],
+    recommendedResources: [String],
     completedAt: Date
   },
   { timestamps: true }

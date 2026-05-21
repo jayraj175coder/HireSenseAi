@@ -11,10 +11,20 @@ const resumeSchema = new mongoose.Schema(
     extractedText: { type: String, default: "" },
     analysis: {
       summary: String,
+      candidateHeadline: String,
+      roleFitScore: Number,
       topSkills: [String],
       missingSkills: [String],
       senioritySignal: String,
-      improvementTips: [String]
+      improvementTips: [String],
+      technicalSkills: [String],
+      domainSignals: [String],
+      tools: [String],
+      projectHighlights: [String],
+      riskFlags: [String],
+      suggestedRoles: [String],
+      interviewFocusAreas: [String],
+      personalizationContext: String
     }
   },
   { timestamps: true }
