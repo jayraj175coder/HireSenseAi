@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { FileText, UploadCloud } from "lucide-react";
+import { FileText, Search, UploadCloud } from "lucide-react";
 import api from "../api/client";
 import EmptyState from "../components/EmptyState";
 import { useToast } from "../context/ToastContext";
@@ -62,7 +62,8 @@ export default function ResumeUpload() {
                   <p>{resume.analysis.summary}</p>
                   {resume.analysis.candidateHeadline && <p className="mt-3 text-slate-200">{resume.analysis.candidateHeadline}</p>}
                   {resume.analysis.roleFitScore && <p className="mt-3 text-cyan">Role fit signal: {resume.analysis.roleFitScore}%</p>}
-                  <p className="mt-3 text-slate-500">Top skills: {resume.analysis.topSkills?.join(", ")}</p>
+                  {resume.analysis.topSkills?.length > 0 && <p className="mt-3 text-slate-500">Top skills: {resume.analysis.topSkills.join(", ")}</p>}
+                  {resume.analysis.suggestedRoles?.length > 0 && <p className="mt-2 text-slate-500">Suggested roles: {resume.analysis.suggestedRoles.join(", ")}</p>}
                   {resume.analysis.interviewFocusAreas?.length > 0 && (
                     <div className="mt-3 flex flex-wrap gap-2">
                       {resume.analysis.interviewFocusAreas.map((area) => (
@@ -71,6 +72,14 @@ export default function ResumeUpload() {
                     </div>
                   )}
                 </div>
+              )}
+              {resume.textPreview && (
+                <details className="mt-4 rounded-md border border-white/10 bg-white/[0.03] p-4">
+                  <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-medium text-slate-200">
+                    <Search size={16} className="text-cyan" /> View parsed text preview
+                  </summary>
+                  <p className="mt-3 max-h-44 overflow-y-auto whitespace-pre-wrap text-sm leading-6 text-slate-400">{resume.textPreview}</p>
+                </details>
               )}
             </article>
           )) : <EmptyState title="No resumes uploaded" description="Upload a resume to unlock personalized interview questions." />}
