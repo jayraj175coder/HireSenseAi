@@ -60,7 +60,16 @@ export default function ResumeUpload() {
               {resume.analysis && (
                 <div className="mt-4 rounded-md bg-white/[0.04] p-4 text-sm text-slate-300">
                   <p>{resume.analysis.summary}</p>
+                  {resume.analysis.candidateHeadline && <p className="mt-3 text-slate-200">{resume.analysis.candidateHeadline}</p>}
+                  {resume.analysis.roleFitScore && <p className="mt-3 text-cyan">Role fit signal: {resume.analysis.roleFitScore}%</p>}
                   <p className="mt-3 text-slate-500">Top skills: {resume.analysis.topSkills?.join(", ")}</p>
+                  {resume.analysis.interviewFocusAreas?.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {resume.analysis.interviewFocusAreas.map((area) => (
+                        <span key={area} className="rounded-full bg-white/[0.06] px-3 py-1 text-xs text-slate-300">{area}</span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </article>

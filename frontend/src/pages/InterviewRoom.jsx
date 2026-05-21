@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { CheckCircle2, Clock3, Send } from "lucide-react";
+import { BrainCircuit, CheckCircle2, Clock3, MessageSquareMore, Send, Target } from "lucide-react";
 import { motion } from "framer-motion";
 import api from "../api/client";
 import Spinner from "../components/Spinner";
@@ -15,6 +15,7 @@ export default function InterviewRoom() {
   const [answer, setAnswer] = useState("");
   const [seconds, setSeconds] = useState(120);
   const [submitting, setSubmitting] = useState(false);
+  const [latestFeedback, setLatestFeedback] = useState(null);
 
   useEffect(() => {
     api.get(`/interviews/${id}`).then(({ data }) => {
@@ -37,7 +38,8 @@ export default function InterviewRoom() {
   const submit = async () => {
     setSubmitting(true);
     try {
-      await api.post(`/interviews/${id}/questions/${question._id}/answer`, { answer });
+      const { data } = await api.post(`/interviews/${id}/questions/${question._id}/answer`, { answer });
+      setLatestFeedback(data.feedback);
       setAnswer("");
       if (index + 1 >= session.questions.length) {
         await api.post(`/interviews/${id}/complete`);
@@ -45,7 +47,7 @@ export default function InterviewRoom() {
         return;
       }
       setIndex((value) => value + 1);
-      notify("Answer evaluated");
+      notify("Answer evaluated with adaptive feedback");
     } catch (error) {
       notify(error.response?.data?.message || "Could not evaluate answer", "error");
     } finally {
@@ -70,10 +72,44 @@ export default function InterviewRoom() {
           </div>
         </div>
 
+        {session.interview.interviewPlan?.openingMessage && index === 0 && !latestFeedback && (
+          <div className="mt-6 flex gap-3 rounded-lg border border-cyan/20 bg-cyan/10 p-4 text-sm leading-6 text-slate-200">
+            <BrainCircuit className="mt-1 shrink-0 text-cyan" size={20} />
+            <span>{session.interview.interviewPlan.openingMessage}</span>
+          </div>
+        )}
+
         <motion.div key={question._id} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="mt-6 rounded-lg bg-white/[0.04] p-5">
-          <p className="text-sm uppercase tracking-[0.18em] text-slate-500">{question.category}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm uppercase tracking-[0.18em] text-slate-500">{question.category}</p>
+            <span className="rounded-full border border-white/10 px-2 py-1 text-xs text-slate-400">{question.source === "resume" ? "resume-aware" : "role-based"}</span>
+          </div>
           <p className="mt-3 text-xl leading-8 text-slate-100">{question.prompt}</p>
+          {question.difficultyReason && <p className="mt-3 text-sm text-slate-500">{question.difficultyReason}</p>}
+          {question.evaluationRubric?.length > 0 && (
+            <div className="mt-5 flex flex-wrap gap-2">
+              {question.evaluationRubric.map((item) => (
+                <span key={item.criterion} className="rounded-full bg-white/[0.06] px-3 py-1 text-xs text-slate-300">{item.criterion} · {item.weight}%</span>
+              ))}
+            </div>
+          )}
         </motion.div>
+
+        {latestFeedback && (
+          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="mt-6 rounded-lg border border-lime/20 bg-lime/10 p-5">
+            <div className="flex items-center justify-between gap-4">
+              <h3 className="flex items-center gap-2 font-semibold"><MessageSquareMore size={18} className="text-lime" /> AI interviewer</h3>
+              <span className="rounded-md bg-night/60 px-3 py-1 text-sm text-lime">{latestFeedback.score}%</span>
+            </div>
+            <p className="mt-3 text-sm leading-6 text-slate-200">{latestFeedback.interviewerReply}</p>
+            {latestFeedback.followUpQuestion && (
+              <div className="mt-4 rounded-md bg-night/50 p-4 text-sm text-slate-300">
+                <span className="text-lime">Adaptive follow-up:</span> {latestFeedback.followUpQuestion}
+              </div>
+            )}
+            {latestFeedback.nextQuestionAdjustment && <p className="mt-3 text-xs text-slate-500">{latestFeedback.nextQuestionAdjustment}</p>}
+          </motion.div>
+        )}
 
         <label className="mt-6 block">
           <span className="text-sm text-slate-400">Your answer</span>
@@ -90,6 +126,16 @@ export default function InterviewRoom() {
       </section>
 
       <aside className="panel h-fit">
+        <h3 className="flex items-center gap-2 font-semibold"><Target size={17} className="text-cyan" /> Interview focus</h3>
+        <div className="mt-4 space-y-2">
+          {(session.interview.interviewPlan?.competencies || []).map((item) => (
+            <div key={item.name} className="rounded-md bg-white/[0.04] p-3">
+              <div className="flex justify-between gap-2 text-sm"><span>{item.name}</span><span className="text-cyan">{item.weight}%</span></div>
+              <p className="mt-1 text-xs leading-5 text-slate-500">{item.whyItMatters}</p>
+            </div>
+          ))}
+        </div>
+        <div className="my-6 border-t border-white/10" />
         <h3 className="font-semibold">Progress</h3>
         <div className="mt-4 h-3 rounded-full bg-white/10"><div className="h-3 rounded-full bg-cyan" style={{ width: `${progress}%` }} /></div>
         <p className="mt-2 text-sm text-slate-400">{progress}% complete</p>
