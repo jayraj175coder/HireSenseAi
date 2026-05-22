@@ -88,6 +88,15 @@ export const createInterview = asyncHandler(async (req, res) => {
     }))
   );
 
+  if (questions[0]) {
+    interview.transcript.push({
+      speaker: "interviewer",
+      text: questions[0].prompt,
+      question: questions[0]._id
+    });
+    await interview.save();
+  }
+
   res.status(201).json({ interview, questions });
 });
 
@@ -152,9 +161,14 @@ export const submitLiveAnswer = asyncHandler(async (req, res) => {
     throw error;
   }
 
+  const questionBank = await Question.find({ interview: interview._id }).sort({ order: 1 });
   const previousFeedback = await Feedback.find({ interview: interview._id }).sort({ createdAt: 1 });
   const turnNumber = previousFeedback.length + 1;
-  const currentQuestion = req.body.currentQuestion || "Tell me about your background and why this role fits you.";
+  const answeredIndex = turnNumber - 1;
+  const answeredQuestion = req.body.questionId
+    ? await Question.findOne({ _id: req.body.questionId, interview: interview._id })
+    : questionBank[answeredIndex];
+  const currentQuestion = answeredQuestion?.prompt || req.body.currentQuestion || "Tell me about your background and why this role fits you.";
   const answer = req.body.answer || "";
   const liveTurn = await conductLiveInterviewTurn({
     role: interview.role,
@@ -169,17 +183,25 @@ export const submitLiveAnswer = asyncHandler(async (req, res) => {
     interviewerStyle: interview.interviewerStyle
   });
 
-  const repeatedQuestion = (interview.transcript || []).some(
-    (item) => item.speaker === "interviewer" && normalizeQuestion(item.text) === normalizeQuestion(liveTurn.nextQuestion)
-  );
-  if (!liveTurn.nextQuestion || repeatedQuestion) {
-    liveTurn.nextQuestion = replacementLiveQuestion(interview.role, turnNumber, interview.transcript);
-    liveTurn.nextQuestionCategory = turnNumber === 1 ? "resume_deep_dive" : turnNumber === 2 ? "system_design" : "technical";
-    liveTurn.nextQuestionReason = "Selected to avoid repeating the previous interviewer question.";
+  const nextBankQuestion = questionBank[turnNumber];
+  if (nextBankQuestion) {
+    liveTurn.nextQuestion = nextBankQuestion.prompt;
+    liveTurn.nextQuestionCategory = nextBankQuestion.category;
+    liveTurn.nextQuestionReason = `Generated ${nextBankQuestion.category} question (${nextBankQuestion.source || "role"}).`;
+  } else {
+    const repeatedQuestion = (interview.transcript || []).some(
+      (item) => item.speaker === "interviewer" && normalizeQuestion(item.text) === normalizeQuestion(liveTurn.nextQuestion)
+    );
+    if (!liveTurn.nextQuestion || repeatedQuestion) {
+      liveTurn.nextQuestion = replacementLiveQuestion(interview.role, turnNumber, interview.transcript);
+      liveTurn.nextQuestionCategory = turnNumber === 1 ? "resume_deep_dive" : turnNumber === 2 ? "system_design" : "technical";
+      liveTurn.nextQuestionReason = "Selected to avoid repeating the previous interviewer question.";
+    }
   }
 
   const feedback = await Feedback.create({
     interview: interview._id,
+    question: answeredQuestion?._id,
     answer,
     score: liveTurn.score,
     rubricScores: liveTurn.rubricScores || [],
@@ -219,7 +241,11 @@ export const submitLiveAnswer = asyncHandler(async (req, res) => {
     interview.currentQuestionIndex = turnNumber;
     interview.aggregateScore = Math.round([...previousFeedback, feedback].reduce((sum, item) => sum + item.score, 0) / turnNumber);
     interview.difficultyStage = liveTurn.difficultyStage || interview.difficultyStage;
-    interview.transcript.push({ speaker: "interviewer", text: liveTurn.nextQuestion || "Let us go a level deeper. Can you explain your reasoning with a concrete example?" });
+    interview.transcript.push({
+      speaker: "interviewer",
+      text: liveTurn.nextQuestion || "Let us go a level deeper. Can you explain your reasoning with a concrete example?",
+      question: nextBankQuestion?._id
+    });
   }
 
   await interview.save();
@@ -230,6 +256,7 @@ export const submitLiveAnswer = asyncHandler(async (req, res) => {
     nextQuestion: completed ? null : liveTurn.nextQuestion,
     nextQuestionCategory: liveTurn.nextQuestionCategory,
     nextQuestionReason: liveTurn.nextQuestionReason,
+    nextQuestionId: nextBankQuestion?._id || null,
     difficultyStage: interview.difficultyStage,
     completed,
     interview
