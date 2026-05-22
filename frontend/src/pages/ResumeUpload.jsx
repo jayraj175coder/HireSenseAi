@@ -277,7 +277,7 @@ export default function ResumeUpload() {
             <p className="text-sm text-cyan">Resume intelligence</p>
             <h2 className="mt-1 text-3xl font-semibold">Turn your resume into interview ammo</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-              Upload once. HireSense extracts skills, project signals, risk areas, and role fit — then generates React, Node, and stack-specific mock questions for your demo.
+              Upload once. HireSense extracts skills, project signals, risk areas, and role fit — then generates stack-specific mock interview questions.
             </p>
           </div>
           <Link to="/interview/new" className="btn-secondary shrink-0">
@@ -309,7 +309,7 @@ export default function ResumeUpload() {
           >
             <UploadCloud className="text-cyan" size={36} />
             <span className="mt-4 font-medium">{file ? file.name : "Drag & drop or click to choose"}</span>
-            <span className="mt-2 text-sm text-slate-500">Best demo: resume listing React, Node, MongoDB, projects</span>
+            <span className="mt-2 text-sm text-slate-500">PDF, DOC, or DOCX up to your backend size limit</span>
             <input className="sr-only" type="file" accept=".pdf,.doc,.docx" onChange={(event) => setSelectedFile(event.target.files?.[0])} />
           </label>
 
@@ -333,18 +333,12 @@ export default function ResumeUpload() {
           <button className="btn-primary mt-6 w-full" disabled={!file || loading}>
             {loading ? "Building your interview profile..." : "Upload and analyze"}
           </button>
-
-          <ul className="mt-6 space-y-2 text-xs leading-5 text-slate-500">
-            <li>· Judges love: upload → instant skill map → role fit score → start interview</li>
-            <li>· Add Gemini/OpenAI key in backend for deepest semantic parsing</li>
-            <li>· Mention real projects so AI asks React/API follow-ups, not generic prompts</li>
-          </ul>
         </form>
 
         <section className="panel">
           <h3 className="text-xl font-semibold">Analysis dashboard</h3>
           <p className="mt-2 text-sm text-slate-400">
-            {latestResume ? "Latest intelligence report — use Start mock interview for your demo flow." : "Upload a resume to unlock the full report."}
+            {latestResume ? "Latest intelligence report — start a mock interview when you are ready." : "Upload a resume to unlock the full report."}
           </p>
 
           <div className="mt-6 space-y-4">
