@@ -116,10 +116,17 @@ Base URL: `/api`
 
 Add screenshots after deployment:
 
-- `docs/screenshots/landing.png`
-- `docs/screenshots/dashboard.png`
-- `docs/screenshots/interview-room.png`
-- `docs/screenshots/analytics.png`
+- <img width="1611" height="868" alt="image" src="https://github.com/user-attachments/assets/9f3d8139-2e89-42f2-80df-54f06f57b34b" />
+
+-<img width="1867" height="898" alt="image" src="https://github.com/user-attachments/assets/d6f04fcc-63fe-4f50-a7b6-c4290376eca3" />
+
+- <img width="1867" height="901" alt="image" src="https://github.com/user-attachments/assets/65b6296e-a07d-4cc3-94f5-543fb73d862a" />
+
+- <img width="1840" height="911" alt="image" src="https://github.com/user-attachments/assets/1ee0f5c8-8b21-4443-8b2b-b398215e96ae" />
+
+-<img width="1854" height="898" alt="image" src="https://github.com/user-attachments/assets/7b6c79f8-2546-4669-8a56-1d9652ea3509" />
+
+
 
 ## Deployment
 
