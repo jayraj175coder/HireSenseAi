@@ -55,7 +55,7 @@ export default function AppLayout() {
               <p className="text-sm text-slate-500">Welcome back</p>
               <h1 className="text-xl font-semibold">{user?.name || "Candidate"}</h1>
             </div>
-            <div className="hidden rounded-md border border-white/10 px-3 py-2 text-sm text-slate-300 sm:block">{user?.targetRole || "Full Stack Developer"}</div>
+            <div className="hidden rounded-md border border-white/10 px-3 py-2 text-sm text-slate-300 sm:block">{user?.targetRole || " "}</div>
           </div>
           <nav className="mt-4 grid grid-cols-4 gap-2 lg:hidden">
             {links.map(({ to, icon: Icon }) => (
