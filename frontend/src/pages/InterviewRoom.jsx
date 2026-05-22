@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { BrainCircuit, Camera, CameraOff, Clock3, Mic, MicOff, Radio, Send, Sparkles, Target, Volume2, VolumeX } from "lucide-react";
 import { motion } from "framer-motion";
@@ -6,8 +6,11 @@ import api from "../api/client";
 import Spinner from "../components/Spinner";
 import { useToast } from "../context/ToastContext";
 import { interviewers } from "../data/interviewers";
+import { buildGreetingMessages } from "../utils/interviewGreeting";
 
 const maxTurns = 6;
+const SILENCE_SUBMIT_MS = 5500;
+const MIN_SPOKEN_ANSWER_CHARS = 8;
 
 function questionMeta(question, index) {
   if (!question) return `Question ${index + 1}`;
@@ -18,30 +21,12 @@ function questionMeta(question, index) {
 }
 
 function buildFreshSession(data) {
-  const questions = data.questions || [];
-  const turnIndex = data.feedback?.length || 0;
-  const opening =
-    data.interview.interviewPlan?.openingMessage ||
-    data.interview.transcript?.[0]?.text ||
-    `Hi, I am your HireSense AI interviewer. I will conduct this like a real ${data.interview.role} mock interview and adapt based on your answers.`;
-  const activeQuestion = questions[turnIndex];
-  const firstPrompt =
-    activeQuestion?.prompt || "Tell me about yourself and why this role is a strong fit for you.";
-
-  const initialMessages = [{ speaker: "interviewer", text: opening }];
-  if (activeQuestion) {
-    initialMessages.push({
-      speaker: "interviewer",
-      text: firstPrompt,
-      meta: questionMeta(activeQuestion, turnIndex),
-      questionId: activeQuestion._id
-    });
-  }
-
+  const greeting = buildGreetingMessages(data.interview, data.interview.resume?.analysis || data.resume?.analysis);
   return {
-    initialMessages,
-    currentQuestion: firstPrompt,
-    currentQuestionId: activeQuestion?._id || null
+    initialMessages: greeting.messages,
+    currentQuestion: greeting.introPrompt,
+    currentQuestionId: null,
+    greetingSpeech: greeting.messages.map((item) => item.text)
   };
 }
 
@@ -69,7 +54,7 @@ function buildResumedSession(data) {
   const turnIndex = data.feedback?.length || 0;
   const transcript = data.interview.transcript || [];
   const initialMessages = mapTranscriptMessages(transcript, questions);
-  const activeQuestion = questions[turnIndex];
+  const activeQuestion = turnIndex === 0 ? null : questions[turnIndex - 1];
   const lastInterviewer = [...transcript].reverse().find((item) => item.speaker === "interviewer");
 
   return {
@@ -80,17 +65,15 @@ function buildResumedSession(data) {
 }
 
 function buildFromPersistedTranscript(data) {
-  const questions = data.questions || [];
   const turnIndex = data.feedback?.length || 0;
-  const transcript = data.interview.transcript || [];
-  const initialMessages = mapTranscriptMessages(transcript, questions);
-  const activeQuestion = questions[turnIndex];
-  const lastBankMessage = [...initialMessages].reverse().find((item) => item.speaker === "interviewer" && item.questionId);
+  if (turnIndex > 0) return buildResumedSession(data);
 
+  const greeting = buildGreetingMessages(data.interview, data.interview.resume?.analysis || data.resume?.analysis);
   return {
-    initialMessages,
-    currentQuestion: activeQuestion?.prompt || lastBankMessage?.text || "",
-    currentQuestionId: activeQuestion?._id || lastBankMessage?.questionId || null
+    initialMessages: greeting.messages,
+    currentQuestion: greeting.introPrompt,
+    currentQuestionId: null,
+    greetingSpeech: greeting.messages.map((item) => item.text)
   };
 }
 
@@ -134,23 +117,99 @@ export default function InterviewRoom() {
   const [cameraError, setCameraError] = useState("");
   const [latestFeedback, setLatestFeedback] = useState(null);
   const [difficultyStage, setDifficultyStage] = useState("Beginner");
+  const [autoSendPending, setAutoSendPending] = useState(false);
+  const [autoVoiceMode, setAutoVoiceMode] = useState(true);
   const endRef = useRef(null);
   const recognitionRef = useRef(null);
   const videoRef = useRef(null);
   const streamRef = useRef(null);
+  const silenceTimerRef = useRef(null);
+  const listenIntentRef = useRef(true);
+  const submittingRef = useRef(false);
+  const speakingRef = useRef(false);
+  const answerRef = useRef("");
+  const sessionRef = useRef(null);
+  const turnRef = useRef(0);
+  const currentQuestionRef = useRef("");
+  const currentQuestionIdRef = useRef(null);
+  const tryAutoListenRef = useRef(() => {});
 
-  const speakInterviewer = (text) => {
-    if (!voiceEnabled || !("speechSynthesis" in window)) return;
+  useEffect(() => {
+    answerRef.current = answer;
+  }, [answer]);
+
+  useEffect(() => {
+    submittingRef.current = submitting;
+  }, [submitting]);
+
+  useEffect(() => {
+    turnRef.current = turn;
+  }, [turn]);
+
+  useEffect(() => {
+    currentQuestionRef.current = currentQuestion;
+  }, [currentQuestion]);
+
+  useEffect(() => {
+    currentQuestionIdRef.current = currentQuestionId;
+  }, [currentQuestionId]);
+
+  const cleanAnswerText = useCallback((value) => value.replace(/\s*\[listening:[^\]]*\]$/, "").trim(), []);
+
+  const clearSilenceTimer = useCallback(() => {
+    if (silenceTimerRef.current) {
+      window.clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+    setAutoSendPending(false);
+  }, []);
+
+  const stopListening = useCallback(() => {
+    listenIntentRef.current = false;
+    recognitionRef.current?.stop?.();
+    setListening(false);
+    clearSilenceTimer();
+  }, [clearSilenceTimer]);
+
+  const speakInterviewer = useCallback((text, onDone) => {
+    if (!voiceEnabled || !("speechSynthesis" in window)) {
+      onDone?.();
+      return;
+    }
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.rate = 0.94;
     utterance.pitch = 0.92;
     utterance.volume = 1;
-    utterance.onstart = () => setSpeaking(true);
-    utterance.onend = () => setSpeaking(false);
-    utterance.onerror = () => setSpeaking(false);
+    utterance.onstart = () => {
+      speakingRef.current = true;
+      setSpeaking(true);
+      stopListening();
+    };
+    utterance.onend = () => {
+      speakingRef.current = false;
+      setSpeaking(false);
+      onDone?.();
+    };
+    utterance.onerror = () => {
+      speakingRef.current = false;
+      setSpeaking(false);
+      onDone?.();
+    };
     window.speechSynthesis.speak(utterance);
-  };
+  }, [stopListening, voiceEnabled]);
+
+  const speakGreetingSequence = useCallback((parts = [], onDone) => {
+    if (!parts.length) {
+      onDone?.();
+      return;
+    }
+    const [head, ...rest] = parts;
+    speakInterviewer(head, () => {
+      if (rest.length) speakGreetingSequence(rest, onDone);
+      else onDone?.();
+    });
+  }, [speakInterviewer]);
 
   useEffect(() => {
     api.get(`/interviews/${id}`).then(({ data }) => {
@@ -171,13 +230,20 @@ export default function InterviewRoom() {
       setTurn(data.feedback?.length || 0);
       setLatestFeedback(data.feedback?.at(-1) || null);
       setDifficultyStage(data.interview.difficultyStage || "Beginner");
+      sessionRef.current = data;
+      const startMicAfterSpeech = () => {
+        window.setTimeout(() => tryAutoListenRef.current(), 500);
+      };
       if (voiceEnabled) {
-        const lastInterviewer = sessionState.initialMessages.filter((item) => item.speaker === "interviewer").at(-1);
-        const spokenIntro = lastInterviewer?.text || sessionState.currentQuestion;
-        window.setTimeout(() => speakInterviewer(spokenIntro), 600);
+        window.setTimeout(() => {
+          if (sessionState.greetingSpeech?.length) speakGreetingSequence(sessionState.greetingSpeech, startMicAfterSpeech);
+          else speakInterviewer(sessionState.currentQuestion, startMicAfterSpeech);
+        }, 600);
+      } else {
+        startMicAfterSpeech();
       }
     });
-  }, [id]);
+  }, [id, speakGreetingSequence, speakInterviewer, voiceEnabled]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -190,12 +256,17 @@ export default function InterviewRoom() {
   }, [currentQuestion]);
 
   useEffect(() => {
+    sessionRef.current = session;
+  }, [session]);
+
+  useEffect(() => {
     return () => {
+      clearSilenceTimer();
       window.speechSynthesis?.cancel();
       recognitionRef.current?.stop?.();
       streamRef.current?.getTracks().forEach((track) => track.stop());
     };
-  }, []);
+  }, [clearSilenceTimer]);
 
   useEffect(() => {
     if (cameraEnabled && videoRef.current && streamRef.current) {
@@ -207,6 +278,161 @@ export default function InterviewRoom() {
     if (!session || streamRef.current) return;
     startCamera();
   }, [session]);
+
+  const submitAnswer = useCallback(async () => {
+    const activeSession = sessionRef.current;
+    if (!activeSession || submittingRef.current) return;
+
+    const trimmed = cleanAnswerText(answerRef.current);
+    if (trimmed.length < MIN_SPOKEN_ANSWER_CHARS) return;
+
+    submittingRef.current = true;
+    stopListening();
+    setSubmitting(true);
+    setMessages((items) => [...items, { speaker: "candidate", text: trimmed }]);
+
+    try {
+      const currentTurn = turnRef.current;
+      const bankQuestion = currentTurn === 0 ? null : activeSession.questions?.[currentTurn - 1];
+
+      const { data } = await api.post(`/interviews/${id}/live-answer`, {
+        answer: trimmed,
+        currentQuestion: bankQuestion?.prompt || currentQuestionRef.current,
+        questionId: currentTurn === 0 ? undefined : currentQuestionIdRef.current || bankQuestion?._id
+      });
+
+      const nextTurn = currentTurn + 1;
+      setTurn(nextTurn);
+      setLatestFeedback(data.feedback);
+      setDifficultyStage(data.difficultyStage || data.interview?.difficultyStage || difficultyStage);
+      setAnswer("");
+
+      const nextMessages = [{ speaker: "interviewer", text: data.interviewerReply || "Thank you. Let me continue from there.", meta: `Score ${data.feedback.score}%` }];
+      if (data.completed) {
+        nextMessages.push({ speaker: "interviewer", text: "That completes the interview. I am preparing your readiness report now." });
+        setMessages((items) => [...items, ...nextMessages]);
+        speakInterviewer(nextMessages.map((item) => item.text).join(" "), () => {});
+        window.setTimeout(() => navigate(`/interview/${id}/complete`), 800);
+        return;
+      }
+
+      const nextBankQuestion = nextTurn > 0 ? activeSession.questions?.[nextTurn - 1] : null;
+      const nextPrompt = data.nextQuestion || nextBankQuestion?.prompt || "Let us go deeper. Can you explain your reasoning with a real example?";
+      nextMessages.push({
+        speaker: "interviewer",
+        text: nextPrompt,
+        meta: nextBankQuestion
+          ? questionMeta(nextBankQuestion, nextTurn - 1)
+          : `Question ${nextTurn + 1} · ${data.nextQuestionCategory || "adaptive"}`,
+        questionId: data.nextQuestionId || nextBankQuestion?._id || null
+      });
+      setCurrentQuestion(nextPrompt);
+      setCurrentQuestionId(data.nextQuestionId || nextBankQuestion?._id || null);
+      setMessages((items) => [...items, ...nextMessages]);
+
+      const spokenReply = `${data.interviewerReply || "Thank you."} ${nextPrompt}`;
+      speakInterviewer(spokenReply, () => {
+        if (autoVoiceMode) tryAutoListenRef.current();
+      });
+    } catch (error) {
+      notify(error.response?.data?.message || "Live interviewer could not respond", "error");
+      setMessages((items) => items.filter((item) => item.text !== trimmed));
+      if (autoVoiceMode) tryAutoListenRef.current();
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
+    }
+  }, [autoVoiceMode, cleanAnswerText, difficultyStage, id, navigate, notify, speakInterviewer, stopListening]);
+
+  const scheduleSilenceSubmit = useCallback(() => {
+    if (!autoVoiceMode || submittingRef.current || speakingRef.current) return;
+    clearSilenceTimer();
+    const trimmed = cleanAnswerText(answerRef.current);
+    if (trimmed.length < MIN_SPOKEN_ANSWER_CHARS) return;
+
+    setAutoSendPending(true);
+    silenceTimerRef.current = window.setTimeout(() => {
+      silenceTimerRef.current = null;
+      setAutoSendPending(false);
+      submitAnswer();
+    }, SILENCE_SUBMIT_MS);
+  }, [autoVoiceMode, cleanAnswerText, clearSilenceTimer, submitAnswer]);
+
+  const startListening = useCallback(() => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      notify("Speech recognition works best in Chrome or Edge", "error");
+      return;
+    }
+    if (listening || submittingRef.current || speakingRef.current) return;
+
+    listenIntentRef.current = true;
+    const recognition = new SpeechRecognition();
+    recognition.lang = "en-US";
+    recognition.interimResults = true;
+    recognition.continuous = true;
+    recognition.onstart = () => setListening(true);
+    recognition.onerror = () => {
+      setListening(false);
+      if (listenIntentRef.current && autoVoiceMode && !submittingRef.current && !speakingRef.current) {
+        window.setTimeout(() => tryAutoListenRef.current(), 600);
+      }
+    };
+    recognition.onend = () => {
+      setListening(false);
+      scheduleSilenceSubmit();
+      if (listenIntentRef.current && autoVoiceMode && !submittingRef.current && !speakingRef.current) {
+        window.setTimeout(() => tryAutoListenRef.current(), 400);
+      }
+    };
+    recognition.onresult = (event) => {
+      let finalText = "";
+      let interimText = "";
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        const transcript = event.results[index][0].transcript;
+        if (event.results[index].isFinal) finalText += transcript;
+        else interimText += transcript;
+      }
+      if (finalText) {
+        setAnswer((value) => {
+          const base = value.replace(/\s*\[listening:[^\]]*\]$/, "").trim();
+          const next = `${base}${base ? " " : ""}${finalText.trim()}`;
+          answerRef.current = next;
+          return next;
+        });
+        scheduleSilenceSubmit();
+      }
+      if (interimText) {
+        setAnswer((value) => {
+          const next = `${value.replace(/\s*\[listening:[^\]]*\]$/, "").trim()} [listening: ${interimText.trim()}]`;
+          answerRef.current = next;
+          return next;
+        });
+        clearSilenceTimer();
+      }
+    };
+    recognitionRef.current = recognition;
+    try {
+      recognition.start();
+    } catch {
+      setListening(false);
+    }
+  }, [autoVoiceMode, clearSilenceTimer, listening, notify, scheduleSilenceSubmit]);
+
+  const tryAutoStartListening = useCallback(() => {
+    if (!autoVoiceMode || !sessionRef.current || submittingRef.current || speakingRef.current) return;
+    listenIntentRef.current = true;
+    startListening();
+  }, [autoVoiceMode, startListening]);
+
+  useEffect(() => {
+    tryAutoListenRef.current = tryAutoStartListening;
+  }, [tryAutoStartListening]);
+
+  const submit = () => {
+    clearSilenceTimer();
+    submitAnswer();
+  };
 
   const progress = useMemo(() => Math.min(100, Math.round((turn / maxTurns) * 100)), [turn]);
   const selectedInterviewer = useMemo(
@@ -230,41 +456,6 @@ export default function InterviewRoom() {
 
   if (!session) return <Spinner />;
 
-  const toggleListening = () => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      notify("Speech recognition works best in Chrome or Edge", "error");
-      return;
-    }
-
-    if (listening) {
-      recognitionRef.current?.stop();
-      setListening(false);
-      return;
-    }
-
-    const recognition = new SpeechRecognition();
-    recognition.lang = "en-US";
-    recognition.interimResults = true;
-    recognition.continuous = true;
-    recognition.onstart = () => setListening(true);
-    recognition.onend = () => setListening(false);
-    recognition.onerror = () => setListening(false);
-    recognition.onresult = (event) => {
-      let finalText = "";
-      let interimText = "";
-      for (let index = event.resultIndex; index < event.results.length; index += 1) {
-        const transcript = event.results[index][0].transcript;
-        if (event.results[index].isFinal) finalText += transcript;
-        else interimText += transcript;
-      }
-      if (finalText) setAnswer((value) => `${value}${value ? " " : ""}${finalText.trim()}`);
-      if (interimText) setAnswer((value) => value.replace(/\s*\[listening:[^\]]*\]$/, "") + ` [listening: ${interimText.trim()}]`);
-    };
-    recognitionRef.current = recognition;
-    recognition.start();
-  };
-
   const startCamera = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
@@ -275,57 +466,6 @@ export default function InterviewRoom() {
     } catch {
       setCameraEnabled(false);
       setCameraError("Camera permission was blocked or no camera was found.");
-    }
-  };
-
-  const submit = async () => {
-    const trimmed = answer.replace(/\s*\[listening:[^\]]*\]$/, "").trim();
-    if (trimmed.length < 8) return;
-    setSubmitting(true);
-    setMessages((items) => [...items, { speaker: "candidate", text: trimmed }]);
-
-    try {
-      const bankQuestion = session.questions?.[turn];
-      const { data } = await api.post(`/interviews/${id}/live-answer`, {
-        answer: trimmed,
-        currentQuestion: bankQuestion?.prompt || currentQuestion,
-        questionId: currentQuestionId || bankQuestion?._id
-      });
-
-      const nextTurn = turn + 1;
-      setTurn(nextTurn);
-      setLatestFeedback(data.feedback);
-      setDifficultyStage(data.difficultyStage || data.interview?.difficultyStage || difficultyStage);
-      setAnswer("");
-
-      const nextMessages = [{ speaker: "interviewer", text: data.interviewerReply || "Thank you. Let me continue from there.", meta: `Score ${data.feedback.score}%` }];
-      if (data.completed) {
-        nextMessages.push({ speaker: "interviewer", text: "That completes the interview. I am preparing your readiness report now." });
-        setMessages((items) => [...items, ...nextMessages]);
-        speakInterviewer(nextMessages.map((item) => item.text).join(" "));
-        window.setTimeout(() => navigate(`/interview/${id}/complete`), 800);
-        return;
-      }
-
-      const nextBankQuestion = session.questions?.[nextTurn];
-      const nextPrompt = data.nextQuestion || nextBankQuestion?.prompt || "Let us go deeper. Can you explain your reasoning with a real example?";
-      nextMessages.push({
-        speaker: "interviewer",
-        text: nextPrompt,
-        meta: nextBankQuestion
-          ? questionMeta(nextBankQuestion, nextTurn)
-          : `Question ${nextTurn + 1} · ${data.nextQuestionCategory || "adaptive"}`,
-        questionId: data.nextQuestionId || nextBankQuestion?._id || null
-      });
-      setCurrentQuestion(nextPrompt);
-      setCurrentQuestionId(data.nextQuestionId || nextBankQuestion?._id || null);
-      setMessages((items) => [...items, ...nextMessages]);
-      speakInterviewer(nextMessages.map((item) => item.text).join(" "));
-    } catch (error) {
-      notify(error.response?.data?.message || "Live interviewer could not respond", "error");
-      setMessages((items) => items.filter((item) => item.text !== trimmed));
-    } finally {
-      setSubmitting(false);
     }
   };
 
@@ -401,7 +541,17 @@ export default function InterviewRoom() {
             <div className={`absolute bottom-4 left-4 right-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-night/80 p-3 backdrop-blur-xl ${listening ? "border-coral/50 shadow-[0_0_36px_rgba(255,122,107,0.18)]" : "border-white/10"}`}>
               <div className="text-sm">
                 <p className="font-medium">You</p>
-                <p className="text-xs text-slate-500">{listening ? "Mic listening" : cameraEnabled ? "Camera on" : "Waiting for camera"}</p>
+                <p className="text-xs text-slate-500">
+                  {listening
+                    ? autoSendPending
+                      ? "Pause detected — sending soon..."
+                      : autoVoiceMode
+                        ? "Mic on · auto-send after pause"
+                        : "Mic listening"
+                    : cameraEnabled
+                      ? "Camera on"
+                      : "Waiting for camera"}
+                </p>
               </div>
               <button
                 type="button"
@@ -426,8 +576,21 @@ export default function InterviewRoom() {
             <button className="btn-secondary justify-center" onClick={() => speakInterviewer(messages.filter((item) => item.speaker === "interviewer").slice(-2).map((item) => item.text).join(" "))}>
               <Volume2 size={18} /> Replay intro
             </button>
-            <button className={`btn-secondary justify-center ${listening ? "border-coral text-coral" : ""}`} onClick={toggleListening}>
-              {listening ? <MicOff size={18} /> : <Mic size={18} />} {listening ? "Listening" : "Mic answer"}
+            <button
+              className={`btn-secondary justify-center ${listening ? "border-coral text-coral" : autoVoiceMode ? "border-lime/40 text-lime" : ""}`}
+              onClick={() => {
+                if (listening) {
+                  setAutoVoiceMode(false);
+                  stopListening();
+                  return;
+                }
+                setAutoVoiceMode(true);
+                listenIntentRef.current = true;
+                startListening();
+              }}
+            >
+              {listening ? <MicOff size={18} /> : <Mic size={18} />}
+              {listening ? "Pause mic" : autoVoiceMode ? "Auto mic on" : "Start mic"}
             </button>
             <button
               type="button"
@@ -480,7 +643,7 @@ export default function InterviewRoom() {
           <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
             <div>
               <h3 className="text-xl font-semibold">Live transcript</h3>
-              <p className="mt-1 text-sm text-slate-500">Uses your generated interview question bank with adaptive interviewer replies.</p>
+              <p className="mt-1 text-sm text-slate-500">Greeting, warm-up intro, then personalized questions with adaptive replies.</p>
             </div>
             <Sparkles className="text-cyan" size={22} />
           </div>
@@ -523,10 +686,10 @@ export default function InterviewRoom() {
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) submit();
                 }}
-                placeholder="Answer naturally. Mention context, your exact action, tradeoffs, and result..."
+                placeholder="Speak naturally — mic turns on automatically. After you pause ~5 seconds, your answer is sent."
               />
-              <button onClick={submit} className="btn-primary min-h-14 px-6" disabled={submitting || answer.trim().length < 8} aria-label="Send answer">
-                <Send size={20} /> Send
+              <button onClick={submit} className="btn-primary min-h-14 px-6" disabled={submitting || cleanAnswerText(answer).length < MIN_SPOKEN_ANSWER_CHARS} aria-label="Send answer">
+                <Send size={20} /> {autoSendPending ? "Sending..." : "Send"}
               </button>
             </div>
           </div>
