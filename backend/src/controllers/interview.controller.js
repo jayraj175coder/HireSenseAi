@@ -47,6 +47,20 @@ function normalizeQuestion(text = "") {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
+function greetingTransition(role) {
+  return `Thanks for making the time today. I have set this up as a realistic ${role} conversation — one question at a time, at your pace. When you are ready, we will begin with a short introduction.`;
+}
+
+function bankIndexForAnswer(turnNumber, questionId, questionBank) {
+  if (turnNumber <= 1 && !questionId) return null;
+  return Math.max(0, turnNumber - 2);
+}
+
+function bankIndexForNext(turnNumber, questionId) {
+  if (turnNumber === 1 && !questionId) return 0;
+  return turnNumber - 1;
+}
+
 function replacementLiveQuestion(role, turnNumber, transcript) {
   const sequence = liveQuestionSequence[role] || liveQuestionSequence["Full Stack Developer"];
   const asked = new Set((transcript || []).filter((item) => item.speaker === "interviewer").map((item) => normalizeQuestion(item.text)));
@@ -68,7 +82,11 @@ export const createInterview = asyncHandler(async (req, res) => {
     transcript: [
       {
         speaker: "interviewer",
-        text: interviewPlan.openingMessage || `I will run this like a realistic ${role} interview with adaptive follow-ups.`
+        text: interviewPlan.openingMessage || `Hi, I am your interviewer for this ${role} mock interview. Thanks for joining me today.`
+      },
+      {
+        speaker: "interviewer",
+        text: interviewPlan.greetingTransition || greetingTransition(role)
       }
     ]
   });
@@ -88,14 +106,7 @@ export const createInterview = asyncHandler(async (req, res) => {
     }))
   );
 
-  if (questions[0]) {
-    interview.transcript.push({
-      speaker: "interviewer",
-      text: questions[0].prompt,
-      question: questions[0]._id
-    });
-    await interview.save();
-  }
+  await interview.save();
 
   res.status(201).json({ interview, questions });
 });
@@ -164,10 +175,13 @@ export const submitLiveAnswer = asyncHandler(async (req, res) => {
   const questionBank = await Question.find({ interview: interview._id }).sort({ order: 1 });
   const previousFeedback = await Feedback.find({ interview: interview._id }).sort({ createdAt: 1 });
   const turnNumber = previousFeedback.length + 1;
-  const answeredIndex = turnNumber - 1;
-  const answeredQuestion = req.body.questionId
-    ? await Question.findOne({ _id: req.body.questionId, interview: interview._id })
-    : questionBank[answeredIndex];
+  const questionId = req.body.questionId || null;
+  const answeredIndex = bankIndexForAnswer(turnNumber, questionId, questionBank);
+  const answeredQuestion = questionId
+    ? await Question.findOne({ _id: questionId, interview: interview._id })
+    : answeredIndex !== null
+      ? questionBank[answeredIndex]
+      : null;
   const currentQuestion = answeredQuestion?.prompt || req.body.currentQuestion || "Tell me about your background and why this role fits you.";
   const answer = req.body.answer || "";
   const liveTurn = await conductLiveInterviewTurn({
@@ -183,11 +197,20 @@ export const submitLiveAnswer = asyncHandler(async (req, res) => {
     interviewerStyle: interview.interviewerStyle
   });
 
-  const nextBankQuestion = questionBank[turnNumber];
+  const nextBankIndex = bankIndexForNext(turnNumber, questionId);
+  const nextBankQuestion = questionBank[nextBankIndex];
   if (nextBankQuestion) {
     liveTurn.nextQuestion = nextBankQuestion.prompt;
     liveTurn.nextQuestionCategory = nextBankQuestion.category;
-    liveTurn.nextQuestionReason = `Generated ${nextBankQuestion.category} question (${nextBankQuestion.source || "role"}).`;
+    liveTurn.nextQuestionReason =
+      turnNumber === 1 && !questionId
+        ? "Moving from introduction into the first personalized interview question."
+        : `Generated ${nextBankQuestion.category} question (${nextBankQuestion.source || "role"}).`;
+    if (turnNumber === 1 && !questionId) {
+      liveTurn.interviewerReply =
+        liveTurn.interviewerReply ||
+        "Thank you for the introduction — that gives me useful context. Let us move into the first interview question.";
+    }
   } else {
     const repeatedQuestion = (interview.transcript || []).some(
       (item) => item.speaker === "interviewer" && normalizeQuestion(item.text) === normalizeQuestion(liveTurn.nextQuestion)

@@ -11,6 +11,8 @@ services:
         value: production
       - key: CLIENT_URL
         sync: false
+      - key: ALLOW_VERCEL_PREVIEWS
+        value: "true"
       - key: MONGO_URI
         sync: false
       - key: JWT_SECRET

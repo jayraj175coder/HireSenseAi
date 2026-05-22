@@ -236,15 +236,17 @@ ${JSON.stringify(resumeAnalysis || {})}
 Return JSON:
 {
   "openingMessage":"",
+  "greetingTransition":"",
   "strategy":"",
   "personalityLabel":"${style.label}",
   "competencies":[{"name":"","weight":25,"whyItMatters":""}],
   "resumeBasedProbes":[""],
   "riskAreasToValidate":[""]
 }
-Make it feel like a real interviewer who has read the resume.`,
+Make it feel like a real interviewer who has read the resume. openingMessage must greet the candidate warmly. greetingTransition must bridge into the introduction without asking a technical question yet.`,
     {
-      openingMessage: `Hi, I am your ${style.label} interviewer for this ${role} mock interview. I will keep it conversational, ask one question at a time, and adapt based on your answers.`,
+      openingMessage: `Hi, I am your ${style.label} interviewer for this ${role} mock interview. Thanks for joining me today — I am glad you are here.`,
+      greetingTransition: `We will keep this conversational: one question at a time, and I will adapt based on your answers. When you are ready, we will start with a brief introduction.`,
       strategy: `${style.label} style: ${style.challenge}. Start with a short intro, probe resume claims, then increase depth based on answer quality.`,
       personalityLabel: style.label,
       competencies: [

@@ -23,6 +23,7 @@ const interviewSchema = new mongoose.Schema(
     },
     interviewPlan: {
       openingMessage: String,
+      greetingTransition: String,
       strategy: String,
       competencies: [
         {
