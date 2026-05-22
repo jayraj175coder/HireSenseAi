@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { BrainCircuit, Camera, CameraOff, Clock3, Mic, MicOff, Radio, Send, Sparkles, Target, Volume2, VolumeX } from "lucide-react";
+import { BrainCircuit, Camera, Clock3, Mic, MicOff, Radio, Send, Sparkles, Volume2, VolumeX } from "lucide-react";
 import { motion } from "framer-motion";
 import api from "../api/client";
 import Spinner from "../components/Spinner";
@@ -9,7 +9,7 @@ import { interviewers } from "../data/interviewers";
 import { buildGreetingMessages } from "../utils/interviewGreeting";
 
 const maxTurns = 6;
-const SILENCE_SUBMIT_MS = 5500;
+const SILENCE_SUBMIT_MS = 3500;
 const MIN_SPOKEN_ANSWER_CHARS = 8;
 
 function questionMeta(question, index) {
@@ -76,13 +76,6 @@ function buildFromPersistedTranscript(data) {
     greetingSpeech: greeting.messages.map((item) => item.text)
   };
 }
-
-const metricLabels = [
-  ["communication", "Communication"],
-  ["technical", "Technical depth"],
-  ["confidence", "Confidence"],
-  ["problemSolving", "Problem solving"]
-];
 
 function Waveform({ active }) {
   return (
@@ -439,18 +432,6 @@ export default function InterviewRoom() {
     () => interviewers.find((item) => item.id === session?.interview?.interviewerStyle) || interviewers[0],
     [session?.interview?.interviewerStyle]
   );
-  const liveMetrics = useMemo(() => {
-    const signals = latestFeedback?.communicationSignals || {};
-    const rubric = latestFeedback?.rubricScores || [];
-    const technical = rubric.find((item) => /role|technical|depth|correctness/i.test(item.criterion))?.score || latestFeedback?.score || 54;
-    const problemSolving = rubric.find((item) => /structure|tradeoff|problem/i.test(item.criterion))?.score || Math.max(45, (latestFeedback?.score || 55) - 4);
-    return {
-      communication: signals.clarity || 50 + turn * 5,
-      technical,
-      confidence: latestFeedback?.confidence || 45 + turn * 6,
-      problemSolving
-    };
-  }, [latestFeedback, turn]);
   const minutes = String(Math.floor(seconds / 60)).padStart(2, "0");
   const rest = String(seconds % 60).padStart(2, "0");
 
@@ -469,243 +450,160 @@ export default function InterviewRoom() {
     }
   };
 
+  const latestInterviewerLine = [...messages].reverse().find((item) => item.speaker === "interviewer")?.text || currentQuestion;
+
   return (
-    <div className="space-y-6">
-      <section className="overflow-hidden rounded-lg border border-white/10 bg-[#070B16] shadow-[0_24px_90px_rgba(0,0,0,0.35)]">
-        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 bg-white/[0.03] px-5 py-4">
-          <div>
-            <div className="flex items-center gap-2 text-sm text-cyan">
-              <Radio size={16} className={speaking || listening ? "animate-pulse" : ""} />
-              Live interview session
+    <div className="-mx-5 -mt-6 flex h-[calc(100dvh-4.75rem)] max-h-[calc(100dvh-4.75rem)] flex-col overflow-hidden lg:-mt-8 lg:h-[calc(100dvh-5.25rem)] lg:max-h-[calc(100dvh-5.25rem)]">
+      <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-white/10 bg-[#070B16] shadow-[0_24px_90px_rgba(0,0,0,0.35)]">
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-white/[0.03] px-4 py-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-xs text-cyan">
+              <Radio size={14} className={speaking || listening ? "animate-pulse" : ""} />
+              Live interview
             </div>
-            <h2 className="mt-1 text-2xl font-semibold">{session.interview.role}</h2>
+            <h2 className="truncate text-lg font-semibold">{session.interview.role}</h2>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-2 rounded-md border border-white/10 bg-night/60 px-3 py-2 text-sm">
-              <Clock3 size={16} className={seconds < 20 ? "text-coral" : "text-cyan"} /> {minutes}:{rest}
-            </div>
-            <div className="rounded-md border border-white/10 bg-night/60 px-3 py-2 text-sm text-slate-300">{turn}/{maxTurns} answered</div>
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span className="rounded-full border border-cyan/30 bg-cyan/10 px-2.5 py-1 text-cyan">{difficultyStage}</span>
+            <span className="rounded-md border border-white/10 bg-night/60 px-2.5 py-1.5">
+              <Clock3 size={14} className="mr-1 inline text-cyan" />
+              {minutes}:{rest}
+            </span>
+            <span className="rounded-md border border-white/10 bg-night/60 px-2.5 py-1.5">{turn}/{maxTurns}</span>
+            <span className="rounded-md border border-white/10 bg-night/60 px-2.5 py-1.5">{progress}%</span>
           </div>
         </div>
 
-        <div className="grid gap-4 p-4 lg:grid-cols-[1.08fr_0.92fr]">
-          <div className="relative min-h-[330px] overflow-hidden rounded-lg border border-cyan/20 bg-[radial-gradient(circle_at_50%_30%,rgba(92,225,230,0.22),transparent_34%),linear-gradient(135deg,#10182A,#070914)] p-5">
-            <div className="absolute right-4 top-4 rounded-full border border-cyan/30 bg-cyan/10 px-3 py-1 text-xs text-cyan">
+        <div className="grid min-h-0 flex-1 gap-3 overflow-hidden p-3 lg:grid-cols-2 lg:grid-rows-[minmax(0,1fr)_auto] xl:grid-cols-[1.05fr_1fr_0.88fr] xl:grid-rows-1">
+          <div className="relative flex min-h-0 flex-col overflow-hidden rounded-lg border border-cyan/20 bg-[radial-gradient(circle_at_50%_30%,rgba(92,225,230,0.22),transparent_34%),linear-gradient(135deg,#10182A,#070914)] p-4 lg:min-h-[240px] xl:min-h-0">
+            <div className="absolute right-3 top-3 rounded-full border border-cyan/30 bg-cyan/10 px-2.5 py-1 text-[11px] text-cyan">
               {speaking ? "Speaking" : selectedInterviewer.name}
             </div>
-            <div className="flex h-full min-h-[290px] flex-col items-center justify-center text-center">
+            <div className="flex h-full min-h-0 flex-col items-center justify-center text-center">
               <motion.div
-                animate={speaking ? { scale: [1, 1.04, 1], boxShadow: ["0 0 30px rgba(92,225,230,0.25)", "0 0 80px rgba(92,225,230,0.5)", "0 0 30px rgba(92,225,230,0.25)"] } : { scale: 1 }}
+                animate={speaking ? { scale: [1, 1.03, 1] } : { scale: 1 }}
                 transition={{ duration: 1.2, repeat: speaking ? Infinity : 0 }}
-                className="relative flex h-36 w-36 items-center justify-center rounded-full border border-cyan/30 bg-cyan text-night"
+                className="relative flex h-24 w-24 items-center justify-center rounded-full border border-cyan/30 bg-cyan text-night xl:h-28 xl:w-28"
               >
-                <BrainCircuit size={58} />
-                <span className={`absolute bottom-9 h-2 rounded-full bg-night transition-all ${speaking ? "w-16" : "w-9"}`} />
+                <BrainCircuit size={44} />
               </motion.div>
-              <h3 className="mt-6 text-3xl font-semibold">HireSense Interviewer</h3>
-              <div className="mt-3">
+              <p className="mt-3 text-sm font-medium text-slate-200">HireSense Interviewer</p>
+              <div className="mt-2">
                 <Waveform active={speaking} />
               </div>
-              <p className="mt-3 max-w-xl text-sm leading-6 text-slate-300">
-                {speaking ? "Asking the next question out loud." : listening ? "Listening while you answer." : "Ready to evaluate your response and adapt the next question."}
+              <p className="mt-2 line-clamp-2 max-w-md text-xs leading-5 text-slate-400">
+                {speaking ? "Speaking now" : listening ? "Listening to you" : "Waiting for your answer"}
               </p>
-              <div className="mt-6 flex flex-wrap justify-center gap-2">
-                {(session.interview.interviewPlan?.competencies || []).slice(0, 4).map((item) => (
-                  <span key={item.name} className="rounded-full border border-white/10 bg-night/50 px-3 py-1 text-xs text-slate-300">{item.name}</span>
-                ))}
-              </div>
             </div>
           </div>
 
-          <div className="relative min-h-[330px] overflow-hidden rounded-lg border border-white/10 bg-[#0B1020]">
-            <div className="absolute left-4 top-4 z-10 rounded-full border border-white/10 bg-night/70 px-3 py-1 text-xs text-slate-300">
-              Candidate camera
+          <div className="relative min-h-0 overflow-hidden rounded-lg border border-white/10 bg-[#0B1020] lg:min-h-[240px] xl:min-h-0">
+            <div className="absolute left-3 top-3 z-10 rounded-full border border-white/10 bg-night/70 px-2.5 py-1 text-[11px] text-slate-300">
+              You
             </div>
-            <video
-              ref={videoRef}
-              className={`h-full min-h-[330px] w-full object-cover ${cameraEnabled ? "" : "opacity-0"}`}
-              autoPlay
-              muted
-              playsInline
-            />
+            <video ref={videoRef} className={`h-full min-h-[220px] w-full object-cover lg:min-h-0 ${cameraEnabled ? "" : "opacity-0"}`} autoPlay muted playsInline />
             {!cameraEnabled && (
-              <div className="absolute inset-0 flex min-h-[330px] flex-col items-center justify-center bg-[linear-gradient(145deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] px-6 text-center">
-                <p className="font-medium text-slate-200">{cameraError || "Starting camera..."}</p>
-                {cameraError && (
-                  <button className="btn-secondary mt-4" onClick={startCamera}>
-                    <Camera size={17} /> Allow camera
-                  </button>
-                )}
+              <div className="absolute inset-0 flex items-center justify-center bg-[#0B1020] px-4 text-center text-sm text-slate-300">
+                {cameraError || "Starting camera..."}
               </div>
             )}
-            <div className={`absolute bottom-4 left-4 right-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-night/80 p-3 backdrop-blur-xl ${listening ? "border-coral/50 shadow-[0_0_36px_rgba(255,122,107,0.18)]" : "border-white/10"}`}>
-              <div className="text-sm">
-                <p className="font-medium">You</p>
-                <p className="text-xs text-slate-500">
-                  {listening
-                    ? autoSendPending
-                      ? "Pause detected — sending soon..."
-                      : autoVoiceMode
-                        ? "Mic on · auto-send after pause"
-                        : "Mic listening"
-                    : cameraEnabled
-                      ? "Camera on"
-                      : "Waiting for camera"}
-                </p>
+            <div className={`absolute bottom-3 left-3 right-3 rounded-lg border bg-night/85 px-3 py-2 text-xs backdrop-blur-xl ${listening ? "border-coral/50" : "border-white/10"}`}>
+              {listening
+                ? autoSendPending
+                  ? "Sending after ~3s pause..."
+                  : "Mic on · auto-send after ~3s pause"
+                : cameraEnabled
+                  ? "Camera on"
+                  : "Camera starting"}
+            </div>
+          </div>
+
+          <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-white/10 bg-[#0A0F1C] lg:col-span-2 lg:max-h-[220px] xl:col-span-1 xl:max-h-none">
+            <div className="shrink-0 border-b border-white/10 px-3 py-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Live transcript</p>
+                <Sparkles className="text-cyan" size={16} />
               </div>
-              <button
-                type="button"
-                className="btn-secondary cursor-not-allowed px-3 opacity-50"
-                disabled
-                aria-label="Camera stays on during the interview"
-                title="Camera stays on for the full interview"
-              >
-                {cameraEnabled ? <CameraOff size={17} /> : <Camera size={17} />}
-              </button>
+              <p className="mt-1 line-clamp-2 text-xs leading-5 text-cyan">{latestInterviewerLine}</p>
             </div>
-          </div>
-        </div>
 
-        {cameraError && <p className="px-5 pb-4 text-sm text-coral">{cameraError}</p>}
-
-        <div className="grid gap-4 border-t border-white/10 bg-white/[0.02] p-4 lg:grid-cols-[1fr_auto]">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <button className={`btn-secondary justify-center ${voiceEnabled ? "border-cyan/40 text-cyan" : ""}`} onClick={() => setVoiceEnabled((value) => !value)}>
-              {voiceEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />} AI voice
-            </button>
-            <button className="btn-secondary justify-center" onClick={() => speakInterviewer(messages.filter((item) => item.speaker === "interviewer").slice(-2).map((item) => item.text).join(" "))}>
-              <Volume2 size={18} /> Replay intro
-            </button>
-            <button
-              className={`btn-secondary justify-center ${listening ? "border-coral text-coral" : autoVoiceMode ? "border-lime/40 text-lime" : ""}`}
-              onClick={() => {
-                if (listening) {
-                  setAutoVoiceMode(false);
-                  stopListening();
-                  return;
-                }
-                setAutoVoiceMode(true);
-                listenIntentRef.current = true;
-                startListening();
-              }}
-            >
-              {listening ? <MicOff size={18} /> : <Mic size={18} />}
-              {listening ? "Pause mic" : autoVoiceMode ? "Auto mic on" : "Start mic"}
-            </button>
-            <button
-              type="button"
-              className={`btn-secondary cursor-not-allowed justify-center opacity-50 ${cameraEnabled ? "border-lime/50 text-lime" : ""}`}
-              disabled
-              aria-label="Camera stays on during the interview"
-              title="Camera stays on for the full interview"
-            >
-              {cameraEnabled ? <CameraOff size={18} /> : <Camera size={18} />} Camera
-            </button>
-          </div>
-          <div className="min-w-56">
-            <div className="h-3 rounded-full bg-white/10"><div className="h-3 rounded-full bg-cyan" style={{ width: `${progress}%` }} /></div>
-            <p className="mt-2 text-right text-xs text-slate-500">Interview progress {progress}%</p>
-          </div>
-        </div>
-      </section>
-
-      <section className="grid gap-4 lg:grid-cols-[0.25fr_1fr]">
-        <div className="panel">
-          <p className="text-sm text-slate-500">Difficulty evolution</p>
-          <div className="mt-3 inline-flex rounded-full border border-cyan/30 bg-cyan/10 px-4 py-2 text-sm font-semibold text-cyan shadow-[0_0_34px_rgba(92,225,230,0.12)]">
-            {difficultyStage}
-          </div>
-          <p className="mt-4 text-sm leading-6 text-slate-400">{selectedInterviewer.name} is adjusting depth based on answer quality.</p>
-        </div>
-        <div className="panel">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h3 className="text-xl font-semibold">Live recruiter signals</h3>
-              <p className="mt-1 text-sm text-slate-500">Updates after every answer using communication, rubric, and confidence signals.</p>
-            </div>
-            <span className="rounded-full border border-white/10 px-3 py-1 text-xs text-slate-400">{latestFeedback?.hireSignal?.replace("_", " ") || "calibrating"}</span>
-          </div>
-          <div className="mt-5 grid gap-4 md:grid-cols-4">
-            {metricLabels.map(([key, label]) => (
-              <div key={key} className="rounded-lg border border-white/10 bg-white/[0.035] p-4">
-                <div className="flex items-center justify-between text-sm"><span className="text-slate-300">{label}</span><span className="text-cyan">{Math.round(liveMetrics[key])}%</span></div>
-                <div className="mt-3 h-2 rounded-full bg-white/10">
-                  <div className="h-2 rounded-full bg-cyan transition-all duration-700" style={{ width: `${Math.min(100, Math.round(liveMetrics[key]))}%` }} />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="grid gap-6 xl:grid-cols-[1fr_0.36fr]">
-        <div className="panel p-0">
-          <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
-            <div>
-              <h3 className="text-xl font-semibold">Live transcript</h3>
-              <p className="mt-1 text-sm text-slate-500">Greeting, warm-up intro, then personalized questions with adaptive replies.</p>
-            </div>
-            <Sparkles className="text-cyan" size={22} />
-          </div>
-          <div className="max-h-[420px] space-y-4 overflow-y-auto p-5">
-            {messages.map((message, index) => {
-              const isCandidate = message.speaker === "candidate";
-              return (
-                <motion.div
-                  key={`${message.text}-${index}`}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className={`flex ${isCandidate ? "justify-end" : "justify-start"}`}
-                >
-                  <div className={`max-w-[88%] rounded-lg px-4 py-3 shadow-lg ${isCandidate ? "bg-cyan text-night" : "border border-white/10 bg-white/[0.055] text-slate-100"}`}>
-                    <div className="mb-2 flex items-center gap-2 text-xs">
-                      <span className={isCandidate ? "text-night/70" : "text-cyan"}>{isCandidate ? "You" : "AI interviewer"}</span>
-                      {message.meta && <span className={isCandidate ? "text-night/60" : "text-slate-500"}>{message.meta.replace("Â·", "-")}</span>}
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
+              {messages.map((message, index) => {
+                const isCandidate = message.speaker === "candidate";
+                return (
+                  <motion.div
+                    key={`${message.text}-${index}`}
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className={`flex ${isCandidate ? "justify-end" : "justify-start"}`}
+                  >
+                    <div className={`max-w-[95%] rounded-lg px-3 py-2 ${isCandidate ? "bg-cyan text-night" : "border border-white/10 bg-white/[0.05] text-slate-100"}`}>
+                      <div className="mb-1 flex items-center gap-2 text-[10px]">
+                        <span className={isCandidate ? "text-night/70" : "text-cyan"}>{isCandidate ? "You" : "Interviewer"}</span>
+                        {message.meta && <span className={isCandidate ? "text-night/60" : "text-slate-500"}>{message.meta.replace("Â·", "-")}</span>}
+                      </div>
+                      <p className="whitespace-pre-wrap text-xs leading-5">{message.text}</p>
                     </div>
-                    <p className="whitespace-pre-wrap text-sm leading-6">{message.text}</p>
-                  </div>
-                </motion.div>
-              );
-            })}
-            {submitting && (
-              <div className="flex justify-start">
-                <div className="rounded-lg border border-white/10 bg-white/[0.05] px-4 py-3 text-sm text-slate-400">Interviewer is evaluating and preparing the next question...</div>
-              </div>
-            )}
-            <div ref={endRef} />
-          </div>
+                  </motion.div>
+                );
+              })}
+              {submitting && (
+                <p className="text-xs text-slate-500">Interviewer is evaluating your answer...</p>
+              )}
+              <div ref={endRef} />
+            </div>
 
-          <div className="border-t border-white/10 p-5">
-            <label className="sr-only" htmlFor="live-answer">Your answer</label>
-            <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
-              <textarea
-                id="live-answer"
-                className="field min-h-7 resize-none leading-6"
-                value={answer}
-                onChange={(event) => setAnswer(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) submit();
-                }}
-                placeholder="Speak naturally — mic turns on automatically. After you pause ~5 seconds, your answer is sent."
-              />
-              <button onClick={submit} className="btn-primary min-h-14 px-6" disabled={submitting || cleanAnswerText(answer).length < MIN_SPOKEN_ANSWER_CHARS} aria-label="Send answer">
-                <Send size={20} /> {autoSendPending ? "Sending..." : "Send"}
-              </button>
+            <div className="shrink-0 border-t border-white/10 p-3">
+              <div className="mb-2 flex flex-wrap gap-2">
+                <button type="button" className={`btn-secondary px-2.5 py-1.5 text-xs ${voiceEnabled ? "border-cyan/40 text-cyan" : ""}`} onClick={() => setVoiceEnabled((value) => !value)}>
+                  {voiceEnabled ? <Volume2 size={14} /> : <VolumeX size={14} />} Voice
+                </button>
+                <button
+                  type="button"
+                  className={`btn-secondary px-2.5 py-1.5 text-xs ${listening ? "border-coral text-coral" : autoVoiceMode ? "border-lime/40 text-lime" : ""}`}
+                  onClick={() => {
+                    if (listening) {
+                      setAutoVoiceMode(false);
+                      stopListening();
+                      return;
+                    }
+                    setAutoVoiceMode(true);
+                    listenIntentRef.current = true;
+                    startListening();
+                  }}
+                >
+                  {listening ? <MicOff size={14} /> : <Mic size={14} />}
+                  {listening ? "Pause" : "Auto mic"}
+                </button>
+                <button type="button" className="btn-secondary px-2.5 py-1.5 text-xs" onClick={() => speakInterviewer(latestInterviewerLine)}>
+                  <Volume2 size={14} /> Replay
+                </button>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                <textarea
+                  id="live-answer"
+                  className="field min-h-[52px] resize-none py-2 text-sm leading-5"
+                  value={answer}
+                  onChange={(event) => setAnswer(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) submit();
+                  }}
+                  placeholder="Speak — auto-sends after ~3s pause"
+                />
+                <button
+                  type="button"
+                  onClick={submit}
+                  className="btn-primary px-4 py-2"
+                  disabled={submitting || cleanAnswerText(answer).length < MIN_SPOKEN_ANSWER_CHARS}
+                >
+                  <Send size={18} /> {autoSendPending ? "..." : "Send"}
+                </button>
+              </div>
             </div>
           </div>
         </div>
 
-        <aside className="panel h-fit">
-          <h3 className="flex items-center gap-2 font-semibold"><Target size={17} className="text-cyan" /> Evaluation focus</h3>
-          <div className="mt-4 space-y-3">
-            {(session.interview.interviewPlan?.competencies || []).map((item) => (
-              <div key={item.name} className="rounded-md border border-white/10 bg-white/[0.04] p-3">
-                <div className="flex justify-between gap-2 text-sm"><span>{item.name}</span><span className="text-cyan">{item.weight}%</span></div>
-                <p className="mt-1 text-xs leading-5 text-slate-500">{item.whyItMatters}</p>
-              </div>
-            ))}
-          </div>
-        </aside>
+        {cameraError && <p className="shrink-0 px-4 pb-2 text-xs text-coral">{cameraError}</p>}
       </section>
     </div>
   );
