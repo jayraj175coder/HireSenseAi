@@ -13,14 +13,36 @@ const app = express();
 
 const allowedOrigins = (process.env.CLIENT_URL || "http://localhost:5173")
   .split(",")
-  .map((origin) => origin.trim());
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+function allowVercelPreviews() {
+  const flag = (process.env.ALLOW_VERCEL_PREVIEWS || "").trim().toLowerCase();
+  return flag === "true" || flag === "1" || flag === "yes";
+}
+
+function isVercelAppOrigin(origin) {
+  try {
+    const { protocol, hostname } = new URL(origin);
+    return protocol === "https:" && hostname.endsWith(".vercel.app");
+  } catch {
+    return false;
+  }
+}
+
+function isAllowedOrigin(origin) {
+  if (!origin) return true;
+  if (allowedOrigins.includes(origin)) return true;
+  if (allowVercelPreviews() && isVercelAppOrigin(origin)) return true;
+  return false;
+}
 
 app.use(helmet());
 app.use(
   cors({
     origin(origin, callback) {
-      if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
-      return callback(new Error("Origin blocked by CORS policy"));
+      if (isAllowedOrigin(origin)) return callback(null, true);
+      return callback(new Error(`Origin blocked by CORS policy: ${origin}`));
     },
     credentials: true
   })
@@ -33,7 +55,8 @@ app.use(
     windowMs: 15 * 60 * 1000,
     limit: 180,
     standardHeaders: "draft-7",
-    legacyHeaders: false
+    legacyHeaders: false,
+    skip: (req) => req.method === "OPTIONS" || req.path === "/health"
   })
 );
 
