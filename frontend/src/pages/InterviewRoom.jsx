@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { BrainCircuit, Camera, CameraOff, Clock3, Mic, MicOff, Radio, Send, Sparkles, Target, UserRound, Volume2, VolumeX } from "lucide-react";
+import { BrainCircuit, Camera, CameraOff, Clock3, Mic, MicOff, Radio, Send, Sparkles, Target, Volume2, VolumeX } from "lucide-react";
 import { motion } from "framer-motion";
 import api from "../api/client";
 import Spinner from "../components/Spinner";
@@ -8,6 +8,92 @@ import { useToast } from "../context/ToastContext";
 import { interviewers } from "../data/interviewers";
 
 const maxTurns = 6;
+
+function questionMeta(question, index) {
+  if (!question) return `Question ${index + 1}`;
+  const parts = [`Question ${index + 1}`];
+  if (question.category) parts.push(question.category.replace(/_/g, " "));
+  if (question.source) parts.push(question.source);
+  return parts.join(" · ");
+}
+
+function buildFreshSession(data) {
+  const questions = data.questions || [];
+  const turnIndex = data.feedback?.length || 0;
+  const opening =
+    data.interview.interviewPlan?.openingMessage ||
+    data.interview.transcript?.[0]?.text ||
+    `Hi, I am your HireSense AI interviewer. I will conduct this like a real ${data.interview.role} mock interview and adapt based on your answers.`;
+  const activeQuestion = questions[turnIndex];
+  const firstPrompt =
+    activeQuestion?.prompt || "Tell me about yourself and why this role is a strong fit for you.";
+
+  const initialMessages = [{ speaker: "interviewer", text: opening }];
+  if (activeQuestion) {
+    initialMessages.push({
+      speaker: "interviewer",
+      text: firstPrompt,
+      meta: questionMeta(activeQuestion, turnIndex),
+      questionId: activeQuestion._id
+    });
+  }
+
+  return {
+    initialMessages,
+    currentQuestion: firstPrompt,
+    currentQuestionId: activeQuestion?._id || null
+  };
+}
+
+function matchQuestion(questions, questionId) {
+  if (!questionId) return null;
+  const id = questionId.toString();
+  return questions.find((item) => item._id?.toString() === id) || null;
+}
+
+function mapTranscriptMessages(transcript, questions) {
+  return transcript.map((item) => {
+    const matched = matchQuestion(questions, item.question);
+    const index = matched ? questions.findIndex((q) => q._id?.toString() === matched._id?.toString()) : -1;
+    return {
+      speaker: item.speaker,
+      text: item.text,
+      meta: matched ? questionMeta(matched, index) : undefined,
+      questionId: item.question || matched?._id || null
+    };
+  });
+}
+
+function buildResumedSession(data) {
+  const questions = data.questions || [];
+  const turnIndex = data.feedback?.length || 0;
+  const transcript = data.interview.transcript || [];
+  const initialMessages = mapTranscriptMessages(transcript, questions);
+  const activeQuestion = questions[turnIndex];
+  const lastInterviewer = [...transcript].reverse().find((item) => item.speaker === "interviewer");
+
+  return {
+    initialMessages,
+    currentQuestion: activeQuestion?.prompt || lastInterviewer?.text || "",
+    currentQuestionId: activeQuestion?._id || lastInterviewer?.question || null
+  };
+}
+
+function buildFromPersistedTranscript(data) {
+  const questions = data.questions || [];
+  const turnIndex = data.feedback?.length || 0;
+  const transcript = data.interview.transcript || [];
+  const initialMessages = mapTranscriptMessages(transcript, questions);
+  const activeQuestion = questions[turnIndex];
+  const lastBankMessage = [...initialMessages].reverse().find((item) => item.speaker === "interviewer" && item.questionId);
+
+  return {
+    initialMessages,
+    currentQuestion: activeQuestion?.prompt || lastBankMessage?.text || "",
+    currentQuestionId: activeQuestion?._id || lastBankMessage?.questionId || null
+  };
+}
+
 const metricLabels = [
   ["communication", "Communication"],
   ["technical", "Technical depth"],
@@ -36,6 +122,7 @@ export default function InterviewRoom() {
   const [session, setSession] = useState(null);
   const [messages, setMessages] = useState([]);
   const [currentQuestion, setCurrentQuestion] = useState("");
+  const [currentQuestionId, setCurrentQuestionId] = useState(null);
   const [answer, setAnswer] = useState("");
   const [turn, setTurn] = useState(0);
   const [seconds, setSeconds] = useState(150);
@@ -43,7 +130,7 @@ export default function InterviewRoom() {
   const [listening, setListening] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
-  const [cameraEnabled, setCameraEnabled] = useState(false);
+  const [cameraEnabled, setCameraEnabled] = useState(true);
   const [cameraError, setCameraError] = useState("");
   const [latestFeedback, setLatestFeedback] = useState(null);
   const [difficultyStage, setDifficultyStage] = useState("Beginner");
@@ -67,24 +154,26 @@ export default function InterviewRoom() {
 
   useEffect(() => {
     api.get(`/interviews/${id}`).then(({ data }) => {
-      const firstQuestion = data.questions[0]?.prompt || "Tell me about yourself and why this role is a strong fit for you.";
-      const opening = `Hi, I am your HireSense AI interviewer. I will conduct this like a real mock interview. I will ask short questions, listen to your answer, and adapt the next question based on your response. Let us start with a short introduction.`;
+      const turnIndex = data.feedback?.length || 0;
       const savedTranscript = data.interview.transcript || [];
-      const initialMessages = savedTranscript.length > 1
-        ? savedTranscript.map((item) => ({ speaker: item.speaker, text: item.text }))
-        : [
-            { speaker: "interviewer", text: opening },
-            { speaker: "interviewer", text: `First, please introduce yourself briefly and tell me which role you are targeting.`, meta: "Question 1" }
-          ];
+      const hasCandidateTurns = savedTranscript.some((item) => item.speaker === "candidate");
+      const hasPersistedBankQuestion = savedTranscript.some((item) => item.speaker === "interviewer" && item.question);
+      const sessionState = hasCandidateTurns || turnIndex > 0
+        ? buildResumedSession(data)
+        : hasPersistedBankQuestion
+          ? buildFromPersistedTranscript(data)
+          : buildFreshSession(data);
 
       setSession(data);
-      setMessages(initialMessages);
-      setCurrentQuestion(initialMessages.at(-1)?.speaker === "interviewer" ? initialMessages.at(-1).text : firstQuestion);
+      setMessages(sessionState.initialMessages);
+      setCurrentQuestion(sessionState.currentQuestion);
+      setCurrentQuestionId(sessionState.currentQuestionId);
       setTurn(data.feedback?.length || 0);
       setLatestFeedback(data.feedback?.at(-1) || null);
       setDifficultyStage(data.interview.difficultyStage || "Beginner");
       if (voiceEnabled) {
-        const spokenIntro = savedTranscript.length > 1 ? initialMessages.at(-1)?.text : `${opening} First, please introduce yourself briefly and tell me which role you are targeting.`;
+        const lastInterviewer = sessionState.initialMessages.filter((item) => item.speaker === "interviewer").at(-1);
+        const spokenIntro = lastInterviewer?.text || sessionState.currentQuestion;
         window.setTimeout(() => speakInterviewer(spokenIntro), 600);
       }
     });
@@ -115,9 +204,9 @@ export default function InterviewRoom() {
   }, [cameraEnabled]);
 
   useEffect(() => {
-    if (!session || cameraEnabled || streamRef.current) return;
+    if (!session || streamRef.current) return;
     startCamera();
-  }, [session, cameraEnabled]);
+  }, [session]);
 
   const progress = useMemo(() => Math.min(100, Math.round((turn / maxTurns) * 100)), [turn]);
   const selectedInterviewer = useMemo(
@@ -184,19 +273,9 @@ export default function InterviewRoom() {
       setCameraEnabled(true);
       setCameraError("");
     } catch {
+      setCameraEnabled(false);
       setCameraError("Camera permission was blocked or no camera was found.");
     }
-  };
-
-  const toggleCamera = async () => {
-    if (cameraEnabled) {
-      streamRef.current?.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-      setCameraEnabled(false);
-      return;
-    }
-
-    await startCamera();
   };
 
   const submit = async () => {
@@ -206,9 +285,11 @@ export default function InterviewRoom() {
     setMessages((items) => [...items, { speaker: "candidate", text: trimmed }]);
 
     try {
+      const bankQuestion = session.questions?.[turn];
       const { data } = await api.post(`/interviews/${id}/live-answer`, {
         answer: trimmed,
-        currentQuestion
+        currentQuestion: bankQuestion?.prompt || currentQuestion,
+        questionId: currentQuestionId || bankQuestion?._id
       });
 
       const nextTurn = turn + 1;
@@ -226,12 +307,18 @@ export default function InterviewRoom() {
         return;
       }
 
+      const nextBankQuestion = session.questions?.[nextTurn];
+      const nextPrompt = data.nextQuestion || nextBankQuestion?.prompt || "Let us go deeper. Can you explain your reasoning with a real example?";
       nextMessages.push({
         speaker: "interviewer",
-        text: data.nextQuestion || "Let us go deeper. Can you explain your reasoning with a real example?",
-        meta: `Question ${nextTurn + 1} · ${data.nextQuestionCategory || "adaptive"}`
+        text: nextPrompt,
+        meta: nextBankQuestion
+          ? questionMeta(nextBankQuestion, nextTurn)
+          : `Question ${nextTurn + 1} · ${data.nextQuestionCategory || "adaptive"}`,
+        questionId: data.nextQuestionId || nextBankQuestion?._id || null
       });
-      setCurrentQuestion(nextMessages.at(-1).text);
+      setCurrentQuestion(nextPrompt);
+      setCurrentQuestionId(data.nextQuestionId || nextBankQuestion?._id || null);
       setMessages((items) => [...items, ...nextMessages]);
       speakInterviewer(nextMessages.map((item) => item.text).join(" "));
     } catch (error) {
@@ -294,23 +381,35 @@ export default function InterviewRoom() {
             <div className="absolute left-4 top-4 z-10 rounded-full border border-white/10 bg-night/70 px-3 py-1 text-xs text-slate-300">
               Candidate camera
             </div>
-            {cameraEnabled ? (
-              <video ref={videoRef} className="h-full min-h-[330px] w-full object-cover" autoPlay muted playsInline />
-            ) : (
-              <div className="flex min-h-[330px] flex-col items-center justify-center bg-[linear-gradient(145deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] text-center">
-                <div className="flex h-24 w-24 items-center justify-center rounded-full border border-white/10 bg-white/[0.05]">
-                  <UserRound className="text-slate-500" size={42} />
-                </div>
-                <p className="mt-5 font-medium text-slate-200">Camera preview is off</p>
-                <p className="mt-2 max-w-xs text-sm text-slate-500">Turn it on for a real video-interview demo experience.</p>
+            <video
+              ref={videoRef}
+              className={`h-full min-h-[330px] w-full object-cover ${cameraEnabled ? "" : "opacity-0"}`}
+              autoPlay
+              muted
+              playsInline
+            />
+            {!cameraEnabled && (
+              <div className="absolute inset-0 flex min-h-[330px] flex-col items-center justify-center bg-[linear-gradient(145deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] px-6 text-center">
+                <p className="font-medium text-slate-200">{cameraError || "Starting camera..."}</p>
+                {cameraError && (
+                  <button className="btn-secondary mt-4" onClick={startCamera}>
+                    <Camera size={17} /> Allow camera
+                  </button>
+                )}
               </div>
             )}
             <div className={`absolute bottom-4 left-4 right-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-night/80 p-3 backdrop-blur-xl ${listening ? "border-coral/50 shadow-[0_0_36px_rgba(255,122,107,0.18)]" : "border-white/10"}`}>
               <div className="text-sm">
                 <p className="font-medium">You</p>
-                <p className="text-xs text-slate-500">{listening ? "Mic listening" : cameraEnabled ? "Camera active" : "Preview mode"}</p>
+                <p className="text-xs text-slate-500">{listening ? "Mic listening" : cameraEnabled ? "Camera on" : "Waiting for camera"}</p>
               </div>
-              <button className="btn-secondary px-3" onClick={toggleCamera}>
+              <button
+                type="button"
+                className="btn-secondary cursor-not-allowed px-3 opacity-50"
+                disabled
+                aria-label="Camera stays on during the interview"
+                title="Camera stays on for the full interview"
+              >
                 {cameraEnabled ? <CameraOff size={17} /> : <Camera size={17} />}
               </button>
             </div>
@@ -330,7 +429,13 @@ export default function InterviewRoom() {
             <button className={`btn-secondary justify-center ${listening ? "border-coral text-coral" : ""}`} onClick={toggleListening}>
               {listening ? <MicOff size={18} /> : <Mic size={18} />} {listening ? "Listening" : "Mic answer"}
             </button>
-            <button className={`btn-secondary justify-center ${cameraEnabled ? "border-lime/50 text-lime" : ""}`} onClick={toggleCamera}>
+            <button
+              type="button"
+              className={`btn-secondary cursor-not-allowed justify-center opacity-50 ${cameraEnabled ? "border-lime/50 text-lime" : ""}`}
+              disabled
+              aria-label="Camera stays on during the interview"
+              title="Camera stays on for the full interview"
+            >
               {cameraEnabled ? <CameraOff size={18} /> : <Camera size={18} />} Camera
             </button>
           </div>
@@ -375,7 +480,7 @@ export default function InterviewRoom() {
           <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
             <div>
               <h3 className="text-xl font-semibold">Live transcript</h3>
-              <p className="mt-1 text-sm text-slate-500">Human-style interview flow with adaptive follow-up questions.</p>
+              <p className="mt-1 text-sm text-slate-500">Uses your generated interview question bank with adaptive interviewer replies.</p>
             </div>
             <Sparkles className="text-cyan" size={22} />
           </div>
@@ -412,7 +517,7 @@ export default function InterviewRoom() {
             <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
               <textarea
                 id="live-answer"
-                className="field min-h-28 resize-none leading-6"
+                className="field min-h-7 resize-none leading-6"
                 value={answer}
                 onChange={(event) => setAnswer(event.target.value)}
                 onKeyDown={(event) => {
@@ -420,7 +525,7 @@ export default function InterviewRoom() {
                 }}
                 placeholder="Answer naturally. Mention context, your exact action, tradeoffs, and result..."
               />
-              <button onClick={submit} className="btn-primary min-h-28 px-6" disabled={submitting || answer.trim().length < 8} aria-label="Send answer">
+              <button onClick={submit} className="btn-primary min-h-14 px-6" disabled={submitting || answer.trim().length < 8} aria-label="Send answer">
                 <Send size={20} /> Send
               </button>
             </div>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { BrainCircuit, Play, UserRoundCheck } from "lucide-react";
 import api from "../api/client";
 import { interviewers } from "../data/interviewers";
@@ -7,18 +7,31 @@ import { roles, roleSignals } from "../data/roles";
 import { useToast } from "../context/ToastContext";
 
 export default function InterviewSetup() {
+  const [searchParams] = useSearchParams();
   const [role, setRole] = useState("Full Stack Developer");
   const [difficulty, setDifficulty] = useState("mid");
   const [interviewerStyle, setInterviewerStyle] = useState("friendly_hr");
-  const [resumeId, setResumeId] = useState("");
+  const [resumeId, setResumeId] = useState(searchParams.get("resumeId") || "");
   const [resumes, setResumes] = useState([]);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { notify } = useToast();
+  const linkedResume = resumes.find((item) => item._id === resumeId);
 
   useEffect(() => {
-    api.get("/resumes").then(({ data }) => setResumes(data.resumes));
-  }, []);
+    api.get("/resumes").then(({ data }) => {
+      setResumes(data.resumes);
+      const paramResumeId = searchParams.get("resumeId");
+      const paramRole = searchParams.get("role");
+      if (paramResumeId) setResumeId(paramResumeId);
+      if (paramRole && roles.includes(paramRole)) setRole(paramRole);
+      else if (paramResumeId) {
+        const resume = data.resumes.find((item) => item._id === paramResumeId);
+        const suggested = resume?.analysis?.suggestedRoles?.[0];
+        if (suggested && roles.includes(suggested)) setRole(suggested);
+      }
+    });
+  }, [searchParams]);
 
   const start = async () => {
     setLoading(true);
@@ -98,6 +111,11 @@ export default function InterviewSetup() {
             <option value="">No resume selected</option>
             {resumes.map((resume) => <option key={resume._id} value={resume._id}>{resume.originalName}</option>)}
           </select>
+          {linkedResume?.analysis && (
+            <p className="mt-3 text-xs leading-5 text-cyan">
+              Resume linked · {linkedResume.analysis.roleFitScore || "—"}% fit · skills: {(linkedResume.analysis.topSkills || []).slice(0, 4).join(", ") || "detected"}
+            </p>
+          )}
         </label>
       </div>
 
