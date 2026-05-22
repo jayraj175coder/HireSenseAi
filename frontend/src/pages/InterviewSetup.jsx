@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { BrainCircuit, Play } from "lucide-react";
+import { BrainCircuit, Play, UserRoundCheck } from "lucide-react";
 import api from "../api/client";
+import { interviewers } from "../data/interviewers";
 import { roles, roleSignals } from "../data/roles";
 import { useToast } from "../context/ToastContext";
 
 export default function InterviewSetup() {
   const [role, setRole] = useState("Full Stack Developer");
   const [difficulty, setDifficulty] = useState("mid");
+  const [interviewerStyle, setInterviewerStyle] = useState("friendly_hr");
   const [resumeId, setResumeId] = useState("");
   const [resumes, setResumes] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -21,7 +23,7 @@ export default function InterviewSetup() {
   const start = async () => {
     setLoading(true);
     try {
-      const { data } = await api.post("/interviews", { role, difficulty, resumeId: resumeId || undefined });
+      const { data } = await api.post("/interviews", { role, difficulty, interviewerStyle, resumeId: resumeId || undefined });
       notify("Interview generated");
       navigate(`/interview/${data.interview._id}`);
     } catch (error) {
@@ -32,7 +34,7 @@ export default function InterviewSetup() {
   };
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="mx-auto max-w-6xl space-y-6">
       <div className="panel">
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -50,6 +52,32 @@ export default function InterviewSetup() {
             >
               <span className="font-semibold">{item}</span>
               <span className="mt-2 block text-sm text-slate-400">{roleSignals[item]}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="panel">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="flex items-center gap-2 text-2xl font-semibold"><UserRoundCheck className="text-cyan" /> Choose interviewer personality</h2>
+            <p className="mt-2 text-sm text-slate-400">Tone, pressure level, and follow-up style change the whole interview simulation.</p>
+          </div>
+        </div>
+        <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {interviewers.map(({ id, name, icon: Icon, accent, description, style }) => (
+            <button
+              key={id}
+              onClick={() => setInterviewerStyle(id)}
+              className={`group rounded-lg border p-4 text-left transition duration-300 hover:-translate-y-1 hover:shadow-[0_18px_60px_rgba(92,225,230,0.12)] ${interviewerStyle === id ? "border-cyan bg-cyan/10" : "border-white/10 bg-white/[0.035] hover:border-white/25"}`}
+            >
+              <div className="flex items-center justify-between">
+                <Icon className={accent} size={24} />
+                <span className={`h-2.5 w-2.5 rounded-full ${interviewerStyle === id ? "bg-cyan" : "bg-white/20 group-hover:bg-white/40"}`} />
+              </div>
+              <h3 className="mt-5 font-semibold">{name}</h3>
+              <p className="mt-2 text-sm leading-6 text-slate-400">{description}</p>
+              <p className="mt-4 text-xs leading-5 text-slate-500">{style}</p>
             </button>
           ))}
         </div>

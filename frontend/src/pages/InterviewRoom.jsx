@@ -5,8 +5,29 @@ import { motion } from "framer-motion";
 import api from "../api/client";
 import Spinner from "../components/Spinner";
 import { useToast } from "../context/ToastContext";
+import { interviewers } from "../data/interviewers";
 
 const maxTurns = 6;
+const metricLabels = [
+  ["communication", "Communication"],
+  ["technical", "Technical depth"],
+  ["confidence", "Confidence"],
+  ["problemSolving", "Problem solving"]
+];
+
+function Waveform({ active }) {
+  return (
+    <div className="flex h-9 items-end justify-center gap-1">
+      {[8, 18, 28, 16, 34, 22, 12].map((height, index) => (
+        <span
+          key={`${height}-${index}`}
+          className={`w-1.5 rounded-full bg-cyan ${active ? "animate-pulse" : "opacity-40"}`}
+          style={{ height: active ? `${height}px` : "8px", animationDelay: `${index * 90}ms` }}
+        />
+      ))}
+    </div>
+  );
+}
 
 export default function InterviewRoom() {
   const { id } = useParams();
@@ -24,6 +45,8 @@ export default function InterviewRoom() {
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [cameraEnabled, setCameraEnabled] = useState(false);
   const [cameraError, setCameraError] = useState("");
+  const [latestFeedback, setLatestFeedback] = useState(null);
+  const [difficultyStage, setDifficultyStage] = useState("Beginner");
   const endRef = useRef(null);
   const recognitionRef = useRef(null);
   const videoRef = useRef(null);
@@ -58,6 +81,8 @@ export default function InterviewRoom() {
       setMessages(initialMessages);
       setCurrentQuestion(initialMessages.at(-1)?.speaker === "interviewer" ? initialMessages.at(-1).text : firstQuestion);
       setTurn(data.feedback?.length || 0);
+      setLatestFeedback(data.feedback?.at(-1) || null);
+      setDifficultyStage(data.interview.difficultyStage || "Beginner");
       if (voiceEnabled) {
         const spokenIntro = savedTranscript.length > 1 ? initialMessages.at(-1)?.text : `${opening} First, please introduce yourself briefly and tell me which role you are targeting.`;
         window.setTimeout(() => speakInterviewer(spokenIntro), 600);
@@ -95,6 +120,22 @@ export default function InterviewRoom() {
   }, [session, cameraEnabled]);
 
   const progress = useMemo(() => Math.min(100, Math.round((turn / maxTurns) * 100)), [turn]);
+  const selectedInterviewer = useMemo(
+    () => interviewers.find((item) => item.id === session?.interview?.interviewerStyle) || interviewers[0],
+    [session?.interview?.interviewerStyle]
+  );
+  const liveMetrics = useMemo(() => {
+    const signals = latestFeedback?.communicationSignals || {};
+    const rubric = latestFeedback?.rubricScores || [];
+    const technical = rubric.find((item) => /role|technical|depth|correctness/i.test(item.criterion))?.score || latestFeedback?.score || 54;
+    const problemSolving = rubric.find((item) => /structure|tradeoff|problem/i.test(item.criterion))?.score || Math.max(45, (latestFeedback?.score || 55) - 4);
+    return {
+      communication: signals.clarity || 50 + turn * 5,
+      technical,
+      confidence: latestFeedback?.confidence || 45 + turn * 6,
+      problemSolving
+    };
+  }, [latestFeedback, turn]);
   const minutes = String(Math.floor(seconds / 60)).padStart(2, "0");
   const rest = String(seconds % 60).padStart(2, "0");
 
@@ -172,6 +213,8 @@ export default function InterviewRoom() {
 
       const nextTurn = turn + 1;
       setTurn(nextTurn);
+      setLatestFeedback(data.feedback);
+      setDifficultyStage(data.difficultyStage || data.interview?.difficultyStage || difficultyStage);
       setAnswer("");
 
       const nextMessages = [{ speaker: "interviewer", text: data.interviewerReply || "Thank you. Let me continue from there.", meta: `Score ${data.feedback.score}%` }];
@@ -221,7 +264,7 @@ export default function InterviewRoom() {
         <div className="grid gap-4 p-4 lg:grid-cols-[1.08fr_0.92fr]">
           <div className="relative min-h-[330px] overflow-hidden rounded-lg border border-cyan/20 bg-[radial-gradient(circle_at_50%_30%,rgba(92,225,230,0.22),transparent_34%),linear-gradient(135deg,#10182A,#070914)] p-5">
             <div className="absolute right-4 top-4 rounded-full border border-cyan/30 bg-cyan/10 px-3 py-1 text-xs text-cyan">
-              {speaking ? "Speaking" : "AI interviewer"}
+              {speaking ? "Speaking" : selectedInterviewer.name}
             </div>
             <div className="flex h-full min-h-[290px] flex-col items-center justify-center text-center">
               <motion.div
@@ -233,6 +276,9 @@ export default function InterviewRoom() {
                 <span className={`absolute bottom-9 h-2 rounded-full bg-night transition-all ${speaking ? "w-16" : "w-9"}`} />
               </motion.div>
               <h3 className="mt-6 text-3xl font-semibold">HireSense Interviewer</h3>
+              <div className="mt-3">
+                <Waveform active={speaking} />
+              </div>
               <p className="mt-3 max-w-xl text-sm leading-6 text-slate-300">
                 {speaking ? "Asking the next question out loud." : listening ? "Listening while you answer." : "Ready to evaluate your response and adapt the next question."}
               </p>
@@ -259,7 +305,7 @@ export default function InterviewRoom() {
                 <p className="mt-2 max-w-xs text-sm text-slate-500">Turn it on for a real video-interview demo experience.</p>
               </div>
             )}
-            <div className="absolute bottom-4 left-4 right-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/10 bg-night/80 p-3 backdrop-blur-xl">
+            <div className={`absolute bottom-4 left-4 right-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-night/80 p-3 backdrop-blur-xl ${listening ? "border-coral/50 shadow-[0_0_36px_rgba(255,122,107,0.18)]" : "border-white/10"}`}>
               <div className="text-sm">
                 <p className="font-medium">You</p>
                 <p className="text-xs text-slate-500">{listening ? "Mic listening" : cameraEnabled ? "Camera active" : "Preview mode"}</p>
@@ -291,6 +337,35 @@ export default function InterviewRoom() {
           <div className="min-w-56">
             <div className="h-3 rounded-full bg-white/10"><div className="h-3 rounded-full bg-cyan" style={{ width: `${progress}%` }} /></div>
             <p className="mt-2 text-right text-xs text-slate-500">Interview progress {progress}%</p>
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-4 lg:grid-cols-[0.25fr_1fr]">
+        <div className="panel">
+          <p className="text-sm text-slate-500">Difficulty evolution</p>
+          <div className="mt-3 inline-flex rounded-full border border-cyan/30 bg-cyan/10 px-4 py-2 text-sm font-semibold text-cyan shadow-[0_0_34px_rgba(92,225,230,0.12)]">
+            {difficultyStage}
+          </div>
+          <p className="mt-4 text-sm leading-6 text-slate-400">{selectedInterviewer.name} is adjusting depth based on answer quality.</p>
+        </div>
+        <div className="panel">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h3 className="text-xl font-semibold">Live recruiter signals</h3>
+              <p className="mt-1 text-sm text-slate-500">Updates after every answer using communication, rubric, and confidence signals.</p>
+            </div>
+            <span className="rounded-full border border-white/10 px-3 py-1 text-xs text-slate-400">{latestFeedback?.hireSignal?.replace("_", " ") || "calibrating"}</span>
+          </div>
+          <div className="mt-5 grid gap-4 md:grid-cols-4">
+            {metricLabels.map(([key, label]) => (
+              <div key={key} className="rounded-lg border border-white/10 bg-white/[0.035] p-4">
+                <div className="flex items-center justify-between text-sm"><span className="text-slate-300">{label}</span><span className="text-cyan">{Math.round(liveMetrics[key])}%</span></div>
+                <div className="mt-3 h-2 rounded-full bg-white/10">
+                  <div className="h-2 rounded-full bg-cyan transition-all duration-700" style={{ width: `${Math.min(100, Math.round(liveMetrics[key]))}%` }} />
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </section>
