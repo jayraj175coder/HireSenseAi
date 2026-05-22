@@ -11,6 +11,16 @@ const interviewSchema = new mongoose.Schema(
     },
     status: { type: String, enum: ["draft", "in_progress", "completed"], default: "draft" },
     difficulty: { type: String, enum: ["junior", "mid", "senior"], default: "mid" },
+    interviewerStyle: {
+      type: String,
+      enum: ["friendly_hr", "faang_technical", "startup_founder", "strict_senior"],
+      default: "friendly_hr"
+    },
+    difficultyStage: {
+      type: String,
+      enum: ["Beginner", "Intermediate", "Advanced", "Expert"],
+      default: "Beginner"
+    },
     interviewPlan: {
       openingMessage: String,
       strategy: String,
@@ -41,6 +51,14 @@ const interviewSchema = new mongoose.Schema(
       }
     ],
     readinessSummary: String,
+    hiringRecommendation: String,
+    insightTimeline: [
+      {
+        label: String,
+        value: String,
+        severity: { type: String, enum: ["positive", "neutral", "warning"], default: "neutral" }
+      }
+    ],
     roadmap: [String],
     practicePlan: [String],
     recommendedResources: [String],

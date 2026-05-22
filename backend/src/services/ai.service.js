@@ -9,6 +9,33 @@ const fallbackQuestions = {
   "Data Analyst": ["How would you investigate a sudden drop in user activation?", "Explain how you communicate uncertainty in a dashboard.", "Describe your process for cleaning messy business data."]
 };
 
+const interviewerStyles = {
+  friendly_hr: {
+    label: "Friendly HR",
+    tone: "warm, encouraging, conversational, focused on communication, motivation, teamwork, and clarity",
+    challenge: "softly probe vague answers and ask for examples without sounding harsh"
+  },
+  faang_technical: {
+    label: "FAANG Technical Interviewer",
+    tone: "precise, structured, technical, calm, and evidence-driven",
+    challenge: "push on scale, complexity, edge cases, correctness, and tradeoffs"
+  },
+  startup_founder: {
+    label: "Startup Founder",
+    tone: "fast-moving, product-minded, practical, direct, and ownership-focused",
+    challenge: "probe bias for action, ambiguity, customer impact, speed, and ownership"
+  },
+  strict_senior: {
+    label: "Strict Senior Engineer",
+    tone: "direct, rigorous, skeptical but fair, focused on depth and production readiness",
+    challenge: "challenge weak logic, ask for exact bottlenecks, failure modes, and operational details"
+  }
+};
+
+function styleConfig(style) {
+  return interviewerStyles[style] || interviewerStyles.friendly_hr;
+}
+
 function cleanJson(text) {
   return text.replace(/```json|```/g, "").trim();
 }
@@ -49,17 +76,44 @@ function scoreFromAnswer(answer) {
   return Math.min(88, Math.max(45, 45 + lengthScore + evidenceBonus + tradeoffBonus));
 }
 
-function liveFallbackTurn({ role, answer, turnNumber, maxTurns }) {
+function stageFromScore(score, turnNumber) {
+  if (score >= 82 && turnNumber >= 4) return "Expert";
+  if (score >= 72 && turnNumber >= 3) return "Advanced";
+  if (score >= 60 || turnNumber >= 2) return "Intermediate";
+  return "Beginner";
+}
+
+function liveFallbackTurn({ role, answer, turnNumber, maxTurns, interviewerStyle = "friendly_hr" }) {
   const score = scoreFromAnswer(answer);
   const weak = score < 62;
-  const replies = [
-    weak ? "Thanks. I have the context, but I need a more specific example to understand your real contribution." : "Good start. I can see the direction, so I will go one level deeper.",
-    weak ? "That is still a bit broad. Let us make it practical and test how you think through implementation." : "Nice, that gives me some project context. Now I want to check your technical decision-making.",
-    weak ? "Okay. I want to see how you handle problems when something breaks in a real system." : "Good. Let us move from design to debugging and production thinking.",
-    weak ? "I understand. Now I am going to test how you communicate tradeoffs with a team." : "That is useful. Let us talk about tradeoffs and collaboration.",
-    weak ? "Thanks. For the last area, I want to understand how you learn and improve after feedback." : "Good, final stretch. I want to understand your growth mindset and readiness.",
-    "Thanks, that completes the interview. I am preparing your report now."
-  ];
+  const strict = interviewerStyle === "strict_senior" || interviewerStyle === "faang_technical";
+  const founder = interviewerStyle === "startup_founder";
+  const replies = strict
+    ? [
+        weak ? "I am going to stop you there because the answer is too high-level. Give me the exact implementation details." : "Good. Now I want to test whether that reasoning holds under real constraints.",
+        weak ? "That still does not prove depth. Let us move into architecture and be specific." : "Reasonable. Now describe the architecture decision as if this had to survive production traffic.",
+        weak ? "I need a clearer debugging path. Start from symptoms, then isolate the layer." : "Good. Let us pressure-test your debugging process.",
+        weak ? "The tradeoff is not clear yet. Compare two options and defend one." : "Now I want the tradeoff, not just the solution.",
+        weak ? "Last area: identify your weakest gap and make the improvement plan concrete." : "Final area. Show me how you evaluate and improve your own engineering judgment.",
+        "That completes the interview. I am preparing your report."
+      ]
+    : founder
+      ? [
+          weak ? "I get the idea, but I need to know what you owned and what impact it had." : "Good. Now let us connect that to user impact and speed.",
+          weak ? "Make it practical. If I gave you two weeks to ship it, what would you build first?" : "Nice. Now tell me how you would ship the next version faster.",
+          weak ? "When it breaks in front of users, what do you check first?" : "Good. Let us talk about real production pressure.",
+          weak ? "What did you trade off to move faster?" : "Useful. Now tell me what you would sacrifice and what you would protect.",
+          weak ? "What would you learn next to become more useful to a small team?" : "Final question. Show me how you grow when the work is ambiguous.",
+          "Great, I have enough signal. I am preparing your report."
+        ]
+      : [
+          weak ? "Thanks, that gives me a start. I would like one more concrete example so I can understand your real contribution." : "Good start. I can see the direction, so I will go one level deeper.",
+          weak ? "That is still a bit broad. Let us make it practical and talk through implementation." : "Nice, that gives me project context. Now I want to understand your technical decision-making.",
+          weak ? "Okay. Let us walk through how you would handle a real issue when something breaks." : "Good. Let us move from design to debugging and production thinking.",
+          weak ? "I understand. Now I want to hear how you think about tradeoffs with a team." : "That is useful. Let us talk about tradeoffs and collaboration.",
+          weak ? "Thanks. For the last area, I want to understand how you learn and improve after feedback." : "Good, final stretch. I want to understand your growth mindset and readiness.",
+          "Thanks, that completes the interview. I am preparing your report now."
+        ];
   const questions = [
     `Pick one ${role} project from your resume. What problem were you solving, what exactly did you build, and what was your personal contribution?`,
     "Imagine you have to rebuild that project for real users. What architecture would you choose, and why?",
@@ -69,7 +123,7 @@ function liveFallbackTurn({ role, answer, turnNumber, maxTurns }) {
     "What is one skill gap you are actively working on for this role, and how are you practicing it?"
   ];
   const categories = ["resume_deep_dive", "system_design", "technical", "behavioral", "role_scenario", "behavioral"];
-  const index = Math.min(turnNumber, maxTurns - 1);
+  const index = Math.min(Math.max(turnNumber - 1, 0), maxTurns - 1);
 
   return {
     score,
@@ -92,6 +146,7 @@ function liveFallbackTurn({ role, answer, turnNumber, maxTurns }) {
     nextQuestion: questions[index],
     nextQuestionCategory: categories[index],
     nextQuestionReason: "Fallback interviewer selected the next competency area in a natural live-interview sequence.",
+    difficultyStage: stageFromScore(score, turnNumber),
     hireSignal: score >= 78 ? "lean_yes" : score >= 62 ? "mixed" : "lean_no",
     confidence: 70
   };
@@ -166,9 +221,14 @@ Be specific to the resume. Do not invent employers or credentials.`,
   );
 }
 
-export function generateInterviewPlan({ role, difficulty, resumeAnalysis }) {
+export function generateInterviewPlan({ role, difficulty, resumeAnalysis, interviewerStyle = "friendly_hr" }) {
+  const style = styleConfig(interviewerStyle);
   return aiJson(
     `Create an adaptive interview plan for a ${difficulty} ${role} mock interview.
+
+Interviewer personality: ${style.label}
+Tone: ${style.tone}
+Challenge behavior: ${style.challenge}
 
 Resume intelligence:
 ${JSON.stringify(resumeAnalysis || {})}
@@ -177,14 +237,16 @@ Return JSON:
 {
   "openingMessage":"",
   "strategy":"",
+  "personalityLabel":"${style.label}",
   "competencies":[{"name":"","weight":25,"whyItMatters":""}],
   "resumeBasedProbes":[""],
   "riskAreasToValidate":[""]
 }
 Make it feel like a real interviewer who has read the resume.`,
     {
-      openingMessage: `I reviewed your resume context and will run this like a realistic ${role} interview: technical depth, project judgment, communication, and role fit.`,
-      strategy: "Start with role fundamentals, probe resume claims, then increase depth based on answer quality.",
+      openingMessage: `Hi, I am your ${style.label} interviewer for this ${role} mock interview. I will keep it conversational, ask one question at a time, and adapt based on your answers.`,
+      strategy: `${style.label} style: ${style.challenge}. Start with a short intro, probe resume claims, then increase depth based on answer quality.`,
+      personalityLabel: style.label,
       competencies: [
         { name: "Technical depth", weight: 35, whyItMatters: "Shows whether the candidate can solve role-specific problems." },
         { name: "Problem structure", weight: 25, whyItMatters: "Strong candidates reason clearly before jumping to implementation." },
@@ -290,10 +352,15 @@ The followUpQuestion should adapt to a gap or strong signal in this exact answer
   );
 }
 
-export function conductLiveInterviewTurn({ role, difficulty, resumeAnalysis, interviewPlan, transcript, currentQuestion, answer, turnNumber, maxTurns }) {
-  const fallback = liveFallbackTurn({ role, answer, turnNumber, maxTurns });
+export function conductLiveInterviewTurn({ role, difficulty, resumeAnalysis, interviewPlan, transcript, currentQuestion, answer, turnNumber, maxTurns, interviewerStyle = "friendly_hr" }) {
+  const style = styleConfig(interviewerStyle);
+  const fallback = liveFallbackTurn({ role, answer, turnNumber, maxTurns, interviewerStyle });
   return aiJson(
     `You are a calm, professional live AI interviewer for a ${difficulty} ${role} mock interview, similar to a real placement-prep interview.
+
+Interviewer personality: ${style.label}
+Tone: ${style.tone}
+Challenge behavior: ${style.challenge}
 
 Interview plan:
 ${JSON.stringify(interviewPlan || {})}
@@ -325,6 +392,7 @@ Return JSON:
   "nextQuestion":"",
   "nextQuestionCategory":"resume_deep_dive|technical|system_design|behavioral|role_scenario",
   "nextQuestionReason":"",
+  "difficultyStage":"Beginner|Intermediate|Advanced|Expert",
   "hireSignal":"strong_no|lean_no|mixed|lean_yes|strong_yes",
   "confidence":0
 }
@@ -332,10 +400,12 @@ Return JSON:
 Behavior rules:
 - Do not reveal rubric details inside interviewerReply.
 - interviewerReply must be brief and natural, like: "Good, I see the direction. Let me push a little deeper..."
+- interviewerReply must match the selected personality.
 - nextQuestion must be one clear spoken interview question.
 - Adapt nextQuestion to the candidate answer, resume risks, and interview progress.
 - Early turns can ask follow-ups. Later turns should cover missing competencies.
 - If the answer is weak, ask a supportive probing question. If strong, increase difficulty.
+- Increase difficultyStage when the candidate gives specific, technical, evidence-backed answers.
 - Avoid generic quiz questions. Ask scenario, project, debugging, design, or decision-making questions.
 - Never repeat a previous question from the transcript.`,
     fallback
@@ -350,14 +420,17 @@ ${JSON.stringify(feedback)}
 Return JSON:
 {
   "readinessSummary":"",
+  "hiringRecommendation":"",
   "roadmap":[""],
   "practicePlan":[""],
   "recommendedResources":[""],
-  "competencyScores":[{"name":"","score":0}]
+  "competencyScores":[{"name":"","score":0}],
+  "insightTimeline":[{"label":"","value":"","severity":"positive|neutral|warning"}]
 }
 Make the advice actionable, prioritized, and specific to interview performance.`,
     {
       readinessSummary: "Candidate shows usable role knowledge but needs more concrete evidence, tighter structure, and deeper tradeoff analysis.",
+      hiringRecommendation: "Practice more before a final technical round",
       roadmap: [
         "Practice concise STAR answers twice a week.",
         "Build one portfolio project that demonstrates production tradeoffs.",
@@ -371,6 +444,11 @@ Make the advice actionable, prioritized, and specific to interview performance.`
         { name: "Problem structure", score: 66 },
         { name: "Experience evidence", score: 58 },
         { name: "Communication", score: 72 }
+      ],
+      insightTimeline: [
+        { label: "Strongest answer", value: "Best signal came when the candidate used concrete project context.", severity: "positive" },
+        { label: "Weakest answer", value: "Lowest signal came from broad answers without metrics or constraints.", severity: "warning" },
+        { label: "Communication trend", value: "Clear but needs tighter answer structure.", severity: "neutral" }
       ]
     }
   );

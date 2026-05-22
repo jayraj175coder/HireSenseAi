@@ -6,10 +6,19 @@ import { validate } from "../validators/auth.validator.js";
 
 const router = Router();
 const roles = ["Frontend Developer", "Backend Developer", "Full Stack Developer", "AI Engineer", "Data Analyst"];
+const interviewerStyles = ["friendly_hr", "faang_technical", "startup_founder", "strict_senior"];
 
 router.use(protect);
 router.get("/", listInterviews);
-router.post("/", [body("role").isIn(roles).withMessage("Unsupported interview role")], validate, createInterview);
+router.post(
+  "/",
+  [
+    body("role").isIn(roles).withMessage("Unsupported interview role"),
+    body("interviewerStyle").optional().isIn(interviewerStyles).withMessage("Unsupported interviewer personality")
+  ],
+  validate,
+  createInterview
+);
 router.get("/:id", getInterview);
 router.post("/:id/live-answer", [body("answer").trim().isLength({ min: 8 }).withMessage("Answer is too short")], validate, submitLiveAnswer);
 router.post("/:id/questions/:questionId/answer", [body("answer").trim().isLength({ min: 8 }).withMessage("Answer is too short")], validate, submitAnswer);

@@ -50,17 +50,18 @@ function normalizeQuestion(text = "") {
 function replacementLiveQuestion(role, turnNumber, transcript) {
   const sequence = liveQuestionSequence[role] || liveQuestionSequence["Full Stack Developer"];
   const asked = new Set((transcript || []).filter((item) => item.speaker === "interviewer").map((item) => normalizeQuestion(item.text)));
-  return sequence.find((question) => !asked.has(normalizeQuestion(question))) || sequence[Math.min(turnNumber, sequence.length - 1)];
+  return sequence.find((question) => !asked.has(normalizeQuestion(question))) || sequence[Math.min(Math.max(turnNumber - 1, 0), sequence.length - 1)];
 }
 
 export const createInterview = asyncHandler(async (req, res) => {
-  const { role, difficulty = "mid", resumeId } = req.body;
+  const { role, difficulty = "mid", resumeId, interviewerStyle = "friendly_hr" } = req.body;
   const resume = resumeId ? await Resume.findOne({ _id: resumeId, user: req.user._id }) : null;
-  const interviewPlan = await generateInterviewPlan({ role, difficulty, resumeAnalysis: resume?.analysis });
+  const interviewPlan = await generateInterviewPlan({ role, difficulty, resumeAnalysis: resume?.analysis, interviewerStyle });
   const interview = await Interview.create({
     user: req.user._id,
     role,
     difficulty,
+    interviewerStyle,
     resume: resume?._id,
     status: "in_progress",
     interviewPlan,
@@ -164,7 +165,8 @@ export const submitLiveAnswer = asyncHandler(async (req, res) => {
     currentQuestion,
     answer,
     turnNumber,
-    maxTurns
+    maxTurns,
+    interviewerStyle: interview.interviewerStyle
   });
 
   const repeatedQuestion = (interview.transcript || []).some(
@@ -205,14 +207,18 @@ export const submitLiveAnswer = asyncHandler(async (req, res) => {
     interview.status = "completed";
     interview.completedAt = new Date();
     interview.aggregateScore = Math.round(allFeedback.reduce((sum, item) => sum + item.score, 0) / allFeedback.length);
+    interview.difficultyStage = liveTurn.difficultyStage || interview.difficultyStage;
     interview.readinessSummary = roadmap.readinessSummary;
+    interview.hiringRecommendation = roadmap.hiringRecommendation;
     interview.roadmap = roadmap.roadmap || [];
     interview.practicePlan = roadmap.practicePlan || [];
     interview.recommendedResources = roadmap.recommendedResources || [];
     interview.competencyScores = roadmap.competencyScores || [];
+    interview.insightTimeline = roadmap.insightTimeline || [];
   } else {
     interview.currentQuestionIndex = turnNumber;
     interview.aggregateScore = Math.round([...previousFeedback, feedback].reduce((sum, item) => sum + item.score, 0) / turnNumber);
+    interview.difficultyStage = liveTurn.difficultyStage || interview.difficultyStage;
     interview.transcript.push({ speaker: "interviewer", text: liveTurn.nextQuestion || "Let us go a level deeper. Can you explain your reasoning with a concrete example?" });
   }
 
@@ -224,6 +230,7 @@ export const submitLiveAnswer = asyncHandler(async (req, res) => {
     nextQuestion: completed ? null : liveTurn.nextQuestion,
     nextQuestionCategory: liveTurn.nextQuestionCategory,
     nextQuestionReason: liveTurn.nextQuestionReason,
+    difficultyStage: interview.difficultyStage,
     completed,
     interview
   });
@@ -242,10 +249,12 @@ export const completeInterview = asyncHandler(async (req, res) => {
   interview.status = "completed";
   interview.completedAt = new Date();
   interview.readinessSummary = roadmap.readinessSummary;
+  interview.hiringRecommendation = roadmap.hiringRecommendation;
   interview.roadmap = roadmap.roadmap || [];
   interview.practicePlan = roadmap.practicePlan || [];
   interview.recommendedResources = roadmap.recommendedResources || [];
   interview.competencyScores = roadmap.competencyScores || [];
+  interview.insightTimeline = roadmap.insightTimeline || [];
   if (feedback.length) {
     interview.aggregateScore = Math.round(feedback.reduce((sum, item) => sum + item.score, 0) / feedback.length);
   }
