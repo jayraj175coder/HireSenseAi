@@ -9,7 +9,7 @@ import { interviewers } from "../data/interviewers";
 import { buildGreetingMessages } from "../utils/interviewGreeting";
 
 const maxTurns = 6;
-const SILENCE_SUBMIT_MS = 5500;
+const SILENCE_SUBMIT_MS = 3500;
 const MIN_SPOKEN_ANSWER_CHARS = 8;
 
 function questionMeta(question, index) {
@@ -245,9 +245,9 @@ export default function InterviewRoom() {
     });
   }, [id, speakGreetingSequence, speakInterviewer, voiceEnabled]);
 
-  useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  // useEffect(() => {
+  //   endRef.current?.scrollIntoView({ behavior: "smooth" });
+  // }, [messages]);
 
   useEffect(() => {
     setSeconds(150);
