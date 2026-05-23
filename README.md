@@ -1,145 +1,361 @@
-# HireSense AI
+# 🚀 HireSense AI – AI Powered Mock Interview Platform
 
-HireSense AI is a production-ready MERN mock interview platform with resume-aware question generation, timed chat interviews, AI answer evaluation, analytics, and career improvement roadmaps.
+HireSense AI is a full-stack AI-powered mock interview platform that helps students and job seekers prepare for technical interviews using resume-aware AI conversations, real-time answer evaluation, analytics dashboards, and personalized improvement roadmaps.
 
-## Highlights
+The platform simulates realistic interviews using Generative AI and provides intelligent feedback on communication, technical accuracy, confidence, and problem-solving skills.
 
-- JWT authentication with secure password hashing and protected routes
-- Resume uploads for PDF, DOC, and DOCX with text extraction, candidate profiling, role-fit signals, skills intelligence, risk flags, and interview focus areas
-- Dynamic interview planning with resume-aware probes, weighted competencies, role-based scenarios, and adaptive follow-up behavior
-- AI evaluation with rubric scores, evidence, communication signals, interviewer replies, follow-up questions, strengths, weaknesses, suggestions, confidence, and hire signal
-- Analytics dashboard for trends, weak signals, recent history, and score cards
-- Futuristic dark SaaS UI with TailwindCSS, Framer Motion, responsive layouts, skeletons, empty states, toast notifications, and error boundaries
-- Express MVC backend with Helmet, CORS, rate limiting, validation, centralized error handling, and environment configuration
+---
 
-## Tech Stack
+# 📌 Selected Problem Statement
 
-Frontend: React, Vite, TailwindCSS, React Router DOM, Axios, Framer Motion, Lucide React.
+### Problem Statement:
+Build an AI-powered interview preparation platform that:
+- Generates interview questions dynamically
+- Evaluates candidate answers intelligently
+- Provides personalized improvement feedback
+- Helps users prepare for real-world interviews
 
-Backend: Node.js, Express, MongoDB Atlas, Mongoose, JWT, Multer, pdf-parse, Mammoth.
+HireSense AI solves this by creating adaptive mock interviews based on uploaded resumes and target roles.
 
-AI: Gemini or OpenAI. Use one real API key for production behavior. If no key is configured, the backend uses polished fallback responses so hackathon demos still run.
+---
 
-## Folder Structure
+# 🎥 Demo Video
+
+👉 Add your demo video link here:
+
+```bash
+https://your-demo-link.com
+```
+
+(Upload on YouTube or Google Drive)
+
+---
+
+# 🧠 Features & Functionalities
+
+## 🔐 Authentication
+- JWT-based Login & Signup
+- Secure password hashing
+- Protected routes
+
+## 📄 Resume Intelligence
+- Upload Resume (PDF/DOC/DOCX)
+- Resume text extraction
+- Skill analysis
+- Candidate profiling
+- Risk signal detection
+- Role-fit analysis
+
+## 🤖 AI Interview System
+- Resume-aware interview generation
+- Adaptive follow-up questions
+- Role-based interview planning
+- Difficulty-based questions
+- AI interviewer responses
+
+## 📊 AI Evaluation
+- AI-generated scoring
+- Communication analysis
+- Technical evaluation
+- Confidence scoring
+- Strengths & weaknesses
+- Improvement suggestions
+
+## 📈 Analytics Dashboard
+- Interview history
+- Score trends
+- Weak area detection
+- Performance tracking
+- Career roadmap generation
+
+## 🎨 Modern UI/UX
+- Futuristic SaaS UI
+- Dark mode interface
+- Fully responsive design
+- Smooth animations using Framer Motion
+- Skeleton loaders & toast notifications
+
+---
+
+# 🛠 Tech Stack Used
+
+## Frontend
+- React.js
+- Vite
+- TailwindCSS
+- React Router DOM
+- Axios
+- Framer Motion
+- Lucide React
+
+## Backend
+- Node.js
+- Express.js
+- MongoDB Atlas
+- Mongoose
+- JWT Authentication
+- Multer
+
+## AI & Resume Processing
+- Gemini API / OpenAI API
+- pdf-parse
+- Mammoth
+
+## Deployment
+- Vercel (Frontend)
+- Render (Backend)
+
+---
+
+# 🏗 Backend Architecture / System Design
+
+```text
+Client (React Frontend)
+        │
+        ▼
+ REST API Layer (Express.js)
+        │
+ ┌───────────────┬────────────────┐
+ ▼               ▼                ▼
+Auth Service   AI Service     Resume Service
+ │               │                │
+ ▼               ▼                ▼
+MongoDB       Gemini/OpenAI   PDF/DOC Parser
+```
+
+## Architecture Highlights
+- MVC backend structure
+- Centralized error handling
+- JWT middleware authentication
+- AI abstraction layer
+- Modular API services
+- Resume analysis pipeline
+
+---
+
+# ⚙️ Implementation Approach & Workflow
+
+## Step 1: User Authentication
+Users create accounts and securely log in using JWT authentication.
+
+## Step 2: Resume Upload
+Users upload resumes which are parsed and analyzed for:
+- Skills
+- Experience
+- Role fit
+- Technical stack
+
+## Step 3: Interview Generation
+The AI engine generates personalized interview questions based on:
+- Resume content
+- Target role
+- Selected difficulty
+
+## Step 4: Real-time Interview Simulation
+Users answer questions in a timed AI-driven chat interface.
+
+## Step 5: AI Evaluation
+AI evaluates:
+- Technical correctness
+- Communication
+- Confidence
+- Problem-solving approach
+
+## Step 6: Analytics & Feedback
+Users receive:
+- Score reports
+- Improvement suggestions
+- Skill gap analysis
+- Personalized roadmap
+
+---
+
+# 🤖 APIs / Models / Tools Used
+
+| Tool/API | Purpose |
+|---|---|
+| Gemini API | AI interview generation |
+| OpenAI API | AI answer evaluation |
+| MongoDB Atlas | Database |
+| JWT | Authentication |
+| Multer | File upload |
+| pdf-parse | PDF text extraction |
+| Mammoth | DOCX parsing |
+| Render | Backend hosting |
+| Vercel | Frontend deployment |
+
+---
+
+# 📂 Folder Structure
 
 ```text
 hiresense-ai/
-  frontend/
-    src/
-      api/
-      components/
-      context/
-      data/
-      layouts/
-      pages/
-      utils/
-  backend/
-    src/
-      config/
-      controllers/
-      middleware/
-      models/
-      routes/
-      services/
-      utils/
-      validators/
-    uploads/
-  docs/
+│
+├── frontend/
+│   ├── src/
+│   ├── components/
+│   ├── pages/
+│   ├── layouts/
+│   ├── context/
+│   ├── api/
+│   └── utils/
+│
+├── backend/
+│   ├── src/
+│   │   ├── config/
+│   │   ├── controllers/
+│   │   ├── middleware/
+│   │   ├── models/
+│   │   ├── routes/
+│   │   ├── services/
+│   │   ├── validators/
+│   │   └── utils/
+│   │
+│   └── uploads/
+│
+└── docs/
 ```
 
-## Local Setup
+---
+
+# 🔑 Environment Variables Required
+
+## backend/.env
+
+```env
+PORT=5000
+
+MONGO_URI=mongodb+srv://<your-mongodb-uri>
+
+JWT_SECRET=your_secret_key
+
+CLIENT_URL=http://localhost:5173
+
+AI_PROVIDER=gemini
+
+GEMINI_API_KEY=your_gemini_api_key
+
+OPENAI_API_KEY=your_openai_api_key
+```
+
+## frontend/.env
+
+```env
+VITE_API_BASE_URL=http://localhost:5000/api
+```
+
+---
+
+# 📦 Installation Steps
+
+## 1️⃣ Clone Repository
+
+```bash
+git clone https://github.com/yourusername/hiresense-ai.git
+```
+
+## 2️⃣ Navigate into Project
+
+```bash
+cd hiresense-ai
+```
+
+## 3️⃣ Install Dependencies
 
 ```bash
 npm run install:all
 ```
 
-Create environment files:
+---
 
-```bash
-cp backend/.env.example backend/.env
-cp frontend/.env.example frontend/.env
-```
+# ▶️ Setup Instructions to Run Locally
 
-Update `backend/.env` with MongoDB Atlas and AI credentials:
-
-```env
-MONGO_URI=mongodb+srv://<user>:<password>@<cluster>.mongodb.net/hiresense-ai
-JWT_SECRET=replace-with-a-long-random-secret
-CLIENT_URL=http://localhost:5173
-AI_PROVIDER=gemini
-GEMINI_API_KEY=
-OPENAI_API_KEY=
-```
-
-Run the API:
+## Start Backend
 
 ```bash
 npm run dev:backend
 ```
 
-Run the frontend in another terminal:
+## Start Frontend
 
 ```bash
 npm run dev:frontend
 ```
 
-Open `http://localhost:5173`.
+---
 
-## API Routes
+# 🌐 Local URLs
 
-Base URL: `/api`
+Frontend:
+```bash
+http://localhost:5173
+```
 
-| Method | Route | Description |
-| --- | --- | --- |
-| `POST` | `/auth/register` | Create account |
-| `POST` | `/auth/login` | Login and receive JWT |
-| `GET` | `/auth/me` | Current authenticated user |
-| `POST` | `/resumes` | Upload and analyze resume |
-| `GET` | `/resumes` | List resume metadata |
-| `GET` | `/resumes/:id` | Resume details |
-| `POST` | `/interviews` | Generate interview questions |
-| `GET` | `/interviews` | List interview history |
-| `GET` | `/interviews/:id` | Interview, questions, and feedback |
-| `POST` | `/interviews/:id/questions/:questionId/answer` | Evaluate answer |
-| `POST` | `/interviews/:id/complete` | Complete interview and create roadmap |
-| `GET` | `/analytics` | Stats, trends, weaknesses, recent history |
+Backend:
+```bash
+http://localhost:5000
+```
 
-## Database Models
+---
 
-- `User`: profile, email, hashed password, role, target role
-- `Resume`: upload metadata, extracted text, AI analysis
-- `Interview`: user, resume, role, difficulty, AI interview plan, transcript, competency scores, aggregate score, roadmap
-- `Question`: prompt, category, source, difficulty reason, expected signals, evaluation rubric, time limit, order
-- `Feedback`: answer, rubric scores, evidence, communication signals, interviewer reply, adaptive follow-up, hire signal, score
+# 📸 Screenshots
 
-## Screenshots
+## Dashboard
+<img width="1611" height="868" alt="image" src="https://github.com/user-attachments/assets/9f3d8139-2e89-42f2-80df-54f06f57b34b" />
 
-Add screenshots after deployment:
+## AI Interview
+<img width="1867" height="898" alt="image" src="https://github.com/user-attachments/assets/d6f04fcc-63fe-4f50-a7b6-c4290376eca3" />
 
-- <img width="1611" height="868" alt="image" src="https://github.com/user-attachments/assets/9f3d8139-2e89-42f2-80df-54f06f57b34b" />
+## Resume Analysis
+<img width="1867" height="901" alt="image" src="https://github.com/user-attachments/assets/65b6296e-a07d-4cc3-94f5-543fb73d862a" />
 
--<img width="1867" height="898" alt="image" src="https://github.com/user-attachments/assets/d6f04fcc-63fe-4f50-a7b6-c4290376eca3" />
+## Analytics Dashboard
+<img width="1840" height="911" alt="image" src="https://github.com/user-attachments/assets/1ee0f5c8-8b21-4443-8b2b-b398215e96ae" />
 
-- <img width="1867" height="901" alt="image" src="https://github.com/user-attachments/assets/65b6296e-a07d-4cc3-94f5-543fb73d862a" />
+## Performance Report
+<img width="1854" height="898" alt="image" src="https://github.com/user-attachments/assets/7b6c79f8-2546-4669-8a56-1d9652ea3509" />
 
-- <img width="1840" height="911" alt="image" src="https://github.com/user-attachments/assets/1ee0f5c8-8b21-4443-8b2b-b398215e96ae" />
+---
 
--<img width="1854" height="898" alt="image" src="https://github.com/user-attachments/assets/7b6c79f8-2546-4669-8a56-1d9652ea3509" />
+# 🚀 Deployment
 
+## Frontend Deployment
+- Vercel:https://hire-sense-ai-sigma.vercel.app/
 
+## Backend Deployment
+- Render
 
-## Deployment
+---
 
-Frontend deploys to Vercel using `frontend/vercel.json`.
+# 🔒 Production Notes
 
-Backend deploys to Render using `backend/render.yaml`.
+- Use strong JWT secrets
+- Store uploaded resumes securely
+- Enable MongoDB IP restrictions
+- Add logging & monitoring before production launch
 
-See [docs/deployment.md](docs/deployment.md) for exact environment variables, MongoDB Atlas setup, and production CORS notes.
+---
 
-## Production Notes
+# 👨‍💻 Author
 
-- Set a strong `JWT_SECRET`.
-- Set `CLIENT_URL` to your Vercel URL in production.
-- Keep uploaded files on persistent storage for long-term production. Render disks, S3, or Cloudinary are better than ephemeral container storage.
-- Add request logging and monitoring before public launch.
-- Tighten MongoDB Atlas IP access after demo deployment.
+### Jayraj Sanas
+
+- GitHub: https://github.com/jayraj175coder
+- Email: jayrajsanas175@gmail.com
+
+---
+
+# ⭐ Future Improvements
+
+- Voice-based AI interviews
+- Video interview support
+- AI proctoring
+- Multi-language interview support
+- ATS Resume Score Checker
+- Live coding rounds
+
+---
+
+# 📜 License
+
+This project is developed for hackathon and educational purposes.
