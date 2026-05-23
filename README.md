@@ -21,12 +21,8 @@ HireSense AI solves this by creating adaptive mock interviews based on uploaded 
 
 # 🎥 Demo Video
 
-👉 Add your demo video link here:
-
-```bash
 https://www.loom.com/share/2b00a0ce9f6c47629f5da58406cfb0c5
-```
----
+
 
 # 🧠 Features & Functionalities
 
