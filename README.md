@@ -24,11 +24,8 @@ HireSense AI solves this by creating adaptive mock interviews based on uploaded 
 👉 Add your demo video link here:
 
 ```bash
-https://your-demo-link.com
+https://www.loom.com/share/2b00a0ce9f6c47629f5da58406cfb0c5
 ```
-
-(Upload on YouTube or Google Drive)
-
 ---
 
 # 🧠 Features & Functionalities
@@ -108,20 +105,8 @@ https://your-demo-link.com
 ---
 
 # 🏗 Backend Architecture / System Design
+<img width="1024" height="572" alt="image" src="https://github.com/user-attachments/assets/7a1a89c0-df90-4b4a-9943-f887cc7f39e3" />
 
-```text
-Client (React Frontend)
-        │
-        ▼
- REST API Layer (Express.js)
-        │
- ┌───────────────┬────────────────┐
- ▼               ▼                ▼
-Auth Service   AI Service     Resume Service
- │               │                │
- ▼               ▼                ▼
-MongoDB       Gemini/OpenAI   PDF/DOC Parser
-```
 
 ## Architecture Highlights
 - MVC backend structure
