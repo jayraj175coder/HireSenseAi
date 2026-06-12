@@ -16,6 +16,7 @@ import {
 import { motion } from "framer-motion";
 import api from "../api/client";
 import EmptyState from "../components/EmptyState";
+import { ATSAnalysisDashboard } from "../components/ATSScanner";
 import { useToast } from "../context/ToastContext";
 
 const uploadSteps = ["Upload file", "Extract text", "AI resume scan", "Build interview plan"];
@@ -56,6 +57,37 @@ function AnalysisPanel({ resume }) {
   const navigate = useNavigate();
   const suggestedRole = analysis.suggestedRoles?.[0];
 
+  // Show new ATS Dashboard if detailed scores exist
+  if (analysis.scores) {
+    return (
+      <motion.article
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+      >
+        <ATSAnalysisDashboard
+          analysis={analysis}
+          resumeName={resume.originalName}
+        />
+
+        {/* Action button */}
+        <div className="mt-6 flex gap-3">
+          <button
+            type="button"
+            className="btn-primary flex-1"
+            onClick={() =>
+              navigate(
+                `/interview/new?resumeId=${resume._id}${suggestedRole ? `&role=${encodeURIComponent(suggestedRole)}` : ""}`
+              )
+            }
+          >
+            <Play size={16} /> Start Mock Interview
+          </button>
+        </div>
+      </motion.article>
+    );
+  }
+
+  // Fallback to original panel for legacy analysis data
   return (
     <motion.article
       initial={{ opacity: 0, y: 12 }}
